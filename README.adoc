@@ -94,7 +94,7 @@ Add TCP restrictions with:
 
 Add IPC restrictions with:
 . `scope_signal`
-. `scope_abstract_unix`
+. `scope_abstract_unix_socket`
 
 Add optional thread self-restriction flags with:
 . `enable_log_new_exec` - for Landlock's logging to audit subsystem

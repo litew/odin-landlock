@@ -327,7 +327,7 @@ test_policy_builds_network_scope_logging_and_tsync :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_tcp_connect(&policy, 53), "allow_tcp_connect")
 	expect_policy_ok(t, allow_tcp_bind(&policy, 0), "allow_tcp_bind")
 	expect_policy_ok(t, scope_signal(&policy), "scope_signal")
-	expect_policy_ok(t, scope_abstract_unix(&policy), "scope_abstract_unix")
+	expect_policy_ok(t, scope_abstract_unix_socket(&policy), "scope_abstract_unix_socket")
 	expect_policy_ok(t, enable_log_new_exec(&policy), "enable_log_new_exec")
 	expect_policy_ok(t, disable_log_same_exec(&policy), "disable_log_same_exec")
 	expect_policy_ok(t, disable_log_subdomains(&policy), "disable_log_subdomains")
@@ -1204,7 +1204,7 @@ test_scope_options_abi5_vs_abi6 :: proc(t: ^testing.T) {
 	expect_policy_ok(t, init(&policy), "policy_init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, scope_signal(&policy), "scope_signal")
-	expect_policy_ok(t, scope_abstract_unix(&policy), "scope_abstract_unix")
+	expect_policy_ok(t, scope_abstract_unix_socket(&policy), "scope_abstract_unix_socket")
 
 	strict_result := apply_strict(&policy)
 	testing.expect_value(t, strict_result.status, Policy_Status.Unsupported_Feature)
@@ -1230,7 +1230,7 @@ test_scope_rejects_exception_rule :: proc(t: ^testing.T) {
 	policy: Policy
 	expect_policy_ok(t, init(&policy), "policy_init")
 	defer cleanup(&policy)
-	expect_policy_ok(t, scope_abstract_unix(&policy), "scope_abstract_unix")
+	expect_policy_ok(t, scope_abstract_unix_socket(&policy), "scope_abstract_unix_socket")
 
 	result := apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)

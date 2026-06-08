@@ -22,7 +22,7 @@ PR_SET_NO_NEW_PRIVS :: 38
 RULESET_ATTR_SIZE :: 24
 
 // Landlock flags
-Create_Ruleset :: enum {
+Create_Ruleset_Flag :: enum {
 	Version = 1,
 	Errata  = 2,
 }

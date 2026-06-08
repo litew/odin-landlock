@@ -947,7 +947,7 @@ scope_signal :: proc(policy: ^Policy) -> Policy_Error {
 	return policy_error_none()
 }
 
-scope_abstract_unix :: proc(policy: ^Policy) -> Policy_Error {
+scope_abstract_unix_socket :: proc(policy: ^Policy) -> Policy_Error {
 	if !is_ready(policy) {
 		return policy_error_invalid_policy()
 	}

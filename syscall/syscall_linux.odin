@@ -19,7 +19,7 @@ syscall_error :: proc "contextless" (ret: int) -> os.Error {
 
 // get_abi_version returns the supported Landlock ABI version (starting at 1).
 get_abi_version :: proc() -> (int, os.Error) {
-	ret := linux.syscall(unix.SYS_landlock_create_ruleset, 0, 0, Create_Ruleset.Version)
+	ret := linux.syscall(unix.SYS_landlock_create_ruleset, 0, 0, Create_Ruleset_Flag.Version)
 
 	if ret < 0 {
 		return 0, os.Platform_Error(linux.Errno(-ret))
