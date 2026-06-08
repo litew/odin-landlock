@@ -25,8 +25,17 @@ main :: proc() {
 	// A policy is deny-by-default over its handled set. The default handles all
 	// restriction types (filesystem + network + scope); narrow it to filesystem +
 	// network so this example restricts files and TCP while leaving IPC scope alone.
-	if err := landlock.handle_features(&policy, {.Filesystem}); err.kind != .None {
+	if err := landlock.handle_features(&policy, {.Filesystem, .Network}); err.kind != .None {
 		fmt.eprintln("handle_features:", landlock.enum_to_string(err.kind))
+		os.exit(1)
+	}
+
+	// Opt into restrict_self flags (separate from the handled dimensions): audit
+	// logging for newly exec'd children and applying the sandbox to every thread
+	// (TSYNC). Flags the running kernel doesn't support are reported in
+	// result.flags_omitted (and would fail apply_strict).
+	if err := landlock.handle_flags(&policy, {.Log_New_Exec_On, .Tsync}); err.kind != .None {
+		fmt.eprintln("handle_flags:", landlock.enum_to_string(err.kind))
 		os.exit(1)
 	}
 
@@ -62,8 +71,8 @@ main :: proc() {
 	// which may be less restrictive than the one your policy targets.
 	// use apply_strict() for strict "fail if unenforceable" behaviour.
 
-	//	result := landlock.apply_best_effort(&policy)
-	result := landlock.apply_strict(&policy)
+	result := landlock.apply_best_effort(&policy)
+	//result := landlock.apply_strict(&policy)
 
 	fmt.println("=== Landlock self-restriction result ===")
 	stdout := table.stdio_writer()
@@ -76,6 +85,9 @@ main :: proc() {
 	table.row(tbl, "Features requested", ":", fmt.tprintf("%w", result.features_requested))
 	table.row(tbl, "Features applied", ":", fmt.tprintf("%w", result.features_applied))
 	table.row(tbl, "Features omitted", ":", fmt.tprintf("%w", result.features_omitted))
+	table.row(tbl, "Flags requested", ":", fmt.tprintf("%w", result.flags_requested))
+	table.row(tbl, "Flags applied", ":", fmt.tprintf("%w", result.flags_applied))
+	table.row(tbl, "Flags omitted", ":", fmt.tprintf("%w", result.flags_omitted))
 	table.build(tbl, table.unicode_width_proc)
 	for row in 0 ..< tbl.nr_rows {
 		for col in 0 ..< tbl.nr_cols {
@@ -107,10 +119,7 @@ main :: proc() {
 		case .Unavailable, .Disabled, .Unsupported_Platform:
 			// Kernel has no/disabled Landlock.
 			// fail immediately or continue unsandboxed.
-			fmt.eprintln(
-				"landlock lsm not reachable:",
-				landlock.enum_to_string(result.error.kind),
-			)
+			fmt.eprintln("landlock lsm not reachable:", landlock.enum_to_string(result.error.kind))
 		case .Invalid_Policy:
 			fmt.eprintln(
 				"invalid landlock policy:",
