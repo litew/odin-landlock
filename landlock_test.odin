@@ -293,14 +293,14 @@ test_policy_builds_filesystem_helpers :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_ro_files(&policy, "/etc/passwd"), "allow_ro_files")
 	expect_policy_ok(t, allow_rw_files(&policy, file_path), "allow_rw_files")
 
-	testing.expect_value(t, len(policy.path_rules), 5)
-	testing.expect_value(t, policy.path_rules[0].kind, Path_Kind.Directory)
-	testing.expect_value(t, policy.path_rules[0].access, path_access_ro_dir)
-	testing.expect_value(t, policy.path_rules[2].access, path_access_rw_dir)
-	testing.expect_value(t, policy.path_rules[3].kind, Path_Kind.File)
-	testing.expect_value(t, policy.path_rules[3].access, path_access_ro_file)
-	testing.expect_value(t, policy.path_rules[4].access, path_access_rw_file)
-	testing.expect(t, .Filesystem in policy.requested_features, "filesystem feature should be requested")
+	testing.expect_value(t, len(policy.rules_path), 5)
+	testing.expect_value(t, policy.rules_path[0].kind, Path_Kind.Directory)
+	testing.expect_value(t, policy.rules_path[0].access, path_access_ro_dir)
+	testing.expect_value(t, policy.rules_path[2].access, path_access_rw_dir)
+	testing.expect_value(t, policy.rules_path[3].kind, Path_Kind.File)
+	testing.expect_value(t, policy.rules_path[3].access, path_access_ro_file)
+	testing.expect_value(t, policy.rules_path[4].access, path_access_rw_file)
+	testing.expect(t, .Filesystem in policy.features_requested, "filesystem feature should be requested")
 }
 
 @(test)
@@ -312,10 +312,10 @@ test_policy_builds_custom_path_with_resolve_unix :: proc(t: ^testing.T) {
 	access := Path_Access{.Read_Dir, .Resolve_Unix}
 	expect_policy_ok(t, allow_path(&policy, .Directory, "/run", access), "allow_path")
 
-	testing.expect_value(t, len(policy.path_rules), 1)
-	testing.expect_value(t, policy.path_rules[0].access, access)
-	testing.expect(t, .Resolve_Unix in policy.path_rules[0].access, "Resolve_Unix should be per-path access")
-	testing.expect(t, .Filesystem in policy.requested_features, "filesystem feature should be recorded for the path rule")
+	testing.expect_value(t, len(policy.rules_path), 1)
+	testing.expect_value(t, policy.rules_path[0].access, access)
+	testing.expect(t, .Resolve_Unix in policy.rules_path[0].access, "Resolve_Unix should be per-path access")
+	testing.expect(t, .Filesystem in policy.features_requested, "filesystem feature should be recorded for the path rule")
 }
 
 @(test)
@@ -333,21 +333,21 @@ test_policy_builds_network_scope_logging_and_tsync :: proc(t: ^testing.T) {
 	expect_policy_ok(t, disable_log_subdomains(&policy), "disable_log_subdomains")
 	expect_policy_ok(t, enable_thread_sync(&policy), "enable_thread_sync")
 
-	testing.expect_value(t, len(policy.net_rules), 2)
-	testing.expect_value(t, policy.net_rules[0].access_net, syscall.Access_Net_Flags{.Connect_TCP})
-	testing.expect_value(t, policy.net_rules[0].port, u16(53))
-	testing.expect_value(t, policy.net_rules[1].access_net, syscall.Access_Net_Flags{.Bind_TCP})
-	testing.expect_value(t, policy.net_rules[1].port, u16(0))
-	testing.expect(t, .Signal in policy.scoped, "signal scope should be set")
-	testing.expect(t, .Abstract_Unix_Socket in policy.scoped, "abstract unix scope should be set")
-	testing.expect(t, .Log_New_Exec_On in policy.restrict_flags, "log new exec flag should be set")
-	testing.expect(t, .Log_Same_Exec_Off in policy.restrict_flags, "same exec logging disable flag should be set")
-	testing.expect(t, .Log_Subdomains_Off in policy.restrict_flags, "subdomain logging disable flag should be set")
-	testing.expect(t, .Tsync in policy.restrict_flags, "TSYNC flag should be set")
-	testing.expect(t, .Network in policy.requested_features, "network feature should be requested")
-	testing.expect(t, .Scope in policy.requested_features, "scope feature should be requested")
-	testing.expect(t, .Logging in policy.requested_features, "logging feature should be requested")
-	testing.expect(t, .Thread_Sync in policy.requested_features, "thread sync feature should be requested")
+	testing.expect_value(t, len(policy.rules_network), 2)
+	testing.expect_value(t, policy.rules_network[0].access_net, syscall.Access_Net_Flags{.Connect_TCP})
+	testing.expect_value(t, policy.rules_network[0].port, u16(53))
+	testing.expect_value(t, policy.rules_network[1].access_net, syscall.Access_Net_Flags{.Bind_TCP})
+	testing.expect_value(t, policy.rules_network[1].port, u16(0))
+	testing.expect(t, .Signal in policy.rules_scoped, "signal scope should be set")
+	testing.expect(t, .Abstract_Unix_Socket in policy.rules_scoped, "abstract unix scope should be set")
+	testing.expect(t, .Log_New_Exec_On in policy.flags_restricted, "log new exec flag should be set")
+	testing.expect(t, .Log_Same_Exec_Off in policy.flags_restricted, "same exec logging disable flag should be set")
+	testing.expect(t, .Log_Subdomains_Off in policy.flags_restricted, "subdomain logging disable flag should be set")
+	testing.expect(t, .Tsync in policy.flags_restricted, "TSYNC flag should be set")
+	testing.expect(t, .Network in policy.features_requested, "network feature should be requested")
+	testing.expect(t, .Scope in policy.features_requested, "scope feature should be requested")
+	testing.expect(t, .Logging in policy.features_requested, "logging feature should be requested")
+	testing.expect(t, .Thread_Sync in policy.features_requested, "thread sync feature should be requested")
 }
 
 @(test)
@@ -414,7 +414,7 @@ test_missing_path_default_and_ignore_option :: proc(t: ^testing.T) {
 	err := allow_ro_files(&policy, missing_path)
 	testing.expect_value(t, err.kind, Policy_Error_Kind.Invalid_Policy)
 	testing.expect_value(t, err.validation, Policy_Validation_Failure.Missing_Path)
-	testing.expect_value(t, len(policy.path_rules), 0)
+	testing.expect_value(t, len(policy.rules_path), 0)
 
 	err = allow_path(
 		&policy,
@@ -424,10 +424,10 @@ test_missing_path_default_and_ignore_option :: proc(t: ^testing.T) {
 		Path_Options{missing = .Ignore},
 	)
 	expect_policy_ok(t, err, "allow_path missing ignore")
-	testing.expect_value(t, len(policy.path_rules), 0)
-	testing.expect_value(t, len(policy.omitted_path_rules), 1)
-	testing.expect_value(t, policy.omitted_path_rules[0].reason, Path_Omission_Reason.Missing)
-	testing.expect(t, .Filesystem in policy.requested_features, "missing ignored path should still record filesystem intent")
+	testing.expect_value(t, len(policy.rules_path), 0)
+	testing.expect_value(t, len(policy.rules_path_omitted), 1)
+	testing.expect_value(t, policy.rules_path_omitted[0].reason, Path_Omission_Reason.Missing)
+	testing.expect(t, .Filesystem in policy.features_requested, "missing ignored path should still record filesystem intent")
 
 	saved_ops := use_fake_apply_ops()
 	defer apply_ops = saved_ops
@@ -494,17 +494,17 @@ test_duplicate_and_overlapping_path_rules_are_deterministic :: proc(t: ^testing.
 	expect_policy_ok(t, init(&policy, mem.tracking_allocator(&track)), "policy_init")
 	expect_policy_ok(t, allow_ro_dirs(&policy, temp_dir), "allow_ro_dirs")
 	expect_policy_ok(t, allow_ro_dirs(&policy, temp_dir), "duplicate allow_ro_dirs")
-	testing.expect_value(t, len(policy.path_rules), 1)
-	testing.expect_value(t, policy.path_rules[0].access, path_access_ro_dir)
+	testing.expect_value(t, len(policy.rules_path), 1)
+	testing.expect_value(t, policy.rules_path[0].access, path_access_ro_dir)
 
 	expect_policy_ok(t, allow_rw_dirs(&policy, temp_dir), "overlapping allow_rw_dirs")
-	testing.expect_value(t, len(policy.path_rules), 1)
-	testing.expect_value(t, policy.path_rules[0].access, path_access_rw_dir)
+	testing.expect_value(t, len(policy.rules_path), 1)
+	testing.expect_value(t, policy.rules_path[0].access, path_access_rw_dir)
 
 	expect_policy_ok(t, allow_ro_dirs(&policy, child_dir), "overlapping child allow_ro_dirs")
-	testing.expect_value(t, len(policy.path_rules), 2)
-	testing.expect_value(t, policy.path_rules[0].path, temp_dir)
-	testing.expect_value(t, policy.path_rules[1].path, child_dir)
+	testing.expect_value(t, len(policy.rules_path), 2)
+	testing.expect_value(t, policy.rules_path[0].path, temp_dir)
+	testing.expect_value(t, policy.rules_path[1].path, child_dir)
 
 	cleanup(&policy)
 	testing.expect_value(t, len(track.allocation_map), 0)
@@ -554,8 +554,8 @@ test_policy_allocator_copies_and_frees_paths :: proc(t: ^testing.T) {
 
 	caller_path := "/tmp"
 	expect_policy_ok(t, allow_ro_dirs(&policy, caller_path), "allow_ro_dirs")
-	testing.expect_value(t, policy.path_rules[0].path, caller_path)
-	testing.expect(t, raw_data(policy.path_rules[0].path) != raw_data(caller_path), "policy should clone caller path storage")
+	testing.expect_value(t, policy.rules_path[0].path, caller_path)
+	testing.expect(t, raw_data(policy.rules_path[0].path) != raw_data(caller_path), "policy should clone caller path storage")
 	testing.expect(t, len(track.allocation_map) > 0, "tracking allocator should see owned policy storage")
 
 	cleanup(&policy)
@@ -575,8 +575,8 @@ test_policy_cleanup_reset_safe_and_double_cleanup_harmless :: proc(t: ^testing.T
 	cleanup(&policy)
 
 	testing.expect(t, !policy.initialized, "policy should be reset after cleanup")
-	testing.expect_value(t, len(policy.path_rules), 0)
-	testing.expect_value(t, len(policy.net_rules), 0)
+	testing.expect_value(t, len(policy.rules_path), 0)
+	testing.expect_value(t, len(policy.rules_network), 0)
 	testing.expect_value(t, len(track.allocation_map), 0)
 
 	cleanup(&policy)
@@ -861,8 +861,8 @@ test_non_linux_apply_reports_unsupported_platform :: proc(t: ^testing.T) {
 		testing.expect_value(t, result.abi_requested, 0)
 		testing.expect_value(t, result.abi_used, 0)
 		testing.expect_value(t, result.applied_features, Feature_Set{})
-		testing.expect_value(t, result.requested_features, policy.requested_features)
-		testing.expect_value(t, result.omitted_features, policy.requested_features)
+		testing.expect_value(t, result.requested_features, policy.features_requested)
+		testing.expect_value(t, result.omitted_features, policy.features_requested)
 	} else {
 		testing.expect(t, true, "non-Linux unsupported-platform check is target-gated")
 	}
@@ -1538,7 +1538,7 @@ test_path_with_interior_nul_rejected :: proc(t: ^testing.T) {
 	err := allow_path(&policy, .File, "/usr\x00.txt", path_access_ro_file)
 	testing.expect_value(t, err.kind, Policy_Error_Kind.Invalid_Policy)
 	testing.expect_value(t, err.validation, Policy_Validation_Failure.Invalid_Path)
-	testing.expect_value(t, len(policy.path_rules), 0)
+	testing.expect_value(t, len(policy.rules_path), 0)
 }
 
 @(test)
@@ -1551,6 +1551,6 @@ test_oversized_path_rejected :: proc(t: ^testing.T) {
 	err := allow_path(&policy, .Directory, big, path_access_ro_dir)
 	testing.expect_value(t, err.kind, Policy_Error_Kind.Invalid_Policy)
 	testing.expect_value(t, err.validation, Policy_Validation_Failure.Invalid_Path)
-	testing.expect_value(t, len(policy.path_rules), 0)
+	testing.expect_value(t, len(policy.rules_path), 0)
 }
 

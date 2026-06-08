@@ -185,13 +185,13 @@ Policy_Net_Rule :: struct {
 
 Policy :: struct {
 	allocator:          mem.Allocator,
-	path_rules:         [dynamic]Policy_Path_Rule,
-	omitted_path_rules: [dynamic]Policy_Path_Omission,
-	net_rules:          [dynamic]Policy_Net_Rule,
-	scoped:             syscall.Scope_Flags,
-	restrict_flags:     syscall.Restrict_Self_Flags,
-	requested_features: Feature_Set,
-	handled:            Feature_Set,
+	rules_path:         [dynamic]Policy_Path_Rule,
+	rules_path_omitted: [dynamic]Policy_Path_Omission,
+	rules_network:      [dynamic]Policy_Net_Rule,
+	rules_scoped:       syscall.Scope_Flags,
+	flags_restricted:   syscall.Restrict_Self_Flags,
+	features_requested: Feature_Set,
+	features_handled:   Feature_Set,
 	initialized:        bool,
 }
 
@@ -648,7 +648,7 @@ path_validation_stat :: proc(
 }
 
 policy_note_path_features :: proc(policy: ^Policy, access: Path_Access) {
-	policy.requested_features += Feature_Set{.Filesystem}
+	policy.features_requested += Feature_Set{.Filesystem}
 }
 
 init :: proc(policy: ^Policy, allocator := context.allocator) -> Policy_Error {
@@ -660,27 +660,27 @@ init :: proc(policy: ^Policy, allocator := context.allocator) -> Policy_Error {
 	policy.allocator = allocator
 
 	alloc_err: mem.Allocator_Error
-	policy.path_rules, alloc_err = make([dynamic]Policy_Path_Rule, 0, 0, allocator)
+	policy.rules_path, alloc_err = make([dynamic]Policy_Path_Rule, 0, 0, allocator)
 	if alloc_err != nil {
 		policy^ = {}
 		return policy_error_allocation(alloc_err)
 	}
-	policy.omitted_path_rules, alloc_err = make([dynamic]Policy_Path_Omission, 0, 0, allocator)
+	policy.rules_path_omitted, alloc_err = make([dynamic]Policy_Path_Omission, 0, 0, allocator)
 	if alloc_err != nil {
-		delete(policy.path_rules)
-		policy^ = {}
-		return policy_error_allocation(alloc_err)
-	}
-
-	policy.net_rules, alloc_err = make([dynamic]Policy_Net_Rule, 0, 0, allocator)
-	if alloc_err != nil {
-		delete(policy.omitted_path_rules)
-		delete(policy.path_rules)
+		delete(policy.rules_path)
 		policy^ = {}
 		return policy_error_allocation(alloc_err)
 	}
 
-	policy.handled = HANDLED_DEFAULT
+	policy.rules_network, alloc_err = make([dynamic]Policy_Net_Rule, 0, 0, allocator)
+	if alloc_err != nil {
+		delete(policy.rules_path_omitted)
+		delete(policy.rules_path)
+		policy^ = {}
+		return policy_error_allocation(alloc_err)
+	}
+
+	policy.features_handled = HANDLED_DEFAULT
 	policy.initialized = true
 	return policy_error_none()
 }
@@ -694,7 +694,7 @@ handle_features :: proc(policy: ^Policy, dimensions: Feature_Set) -> Policy_Erro
 	if !policy_is_ready(policy) {
 		return policy_error_invalid_policy(.Policy_Not_Initialized)
 	}
-	policy.handled = dimensions & HANDLED_DEFAULT
+	policy.features_handled = dimensions & HANDLED_DEFAULT
 	return policy_error_none()
 }
 
@@ -708,19 +708,19 @@ cleanup :: proc(policy: ^Policy) {
 	}
 
 	allocator := policy.allocator
-	for rule in policy.path_rules {
+	for rule in policy.rules_path {
 		if rule.path != "" {
 			delete(rule.path, allocator)
 		}
 	}
-	for omitted in policy.omitted_path_rules {
+	for omitted in policy.rules_path_omitted {
 		if omitted.path != "" {
 			delete(omitted.path, allocator)
 		}
 	}
-	delete(policy.path_rules)
-	delete(policy.omitted_path_rules)
-	delete(policy.net_rules)
+	delete(policy.rules_path)
+	delete(policy.rules_path_omitted)
+	delete(policy.rules_network)
 	policy^ = {}
 }
 
@@ -731,7 +731,7 @@ record_omitted_path :: proc(
 	access: Path_Access,
 	reason: Path_Omission_Reason,
 ) -> Policy_Error {
-	for omitted in policy.omitted_path_rules {
+	for omitted in policy.rules_path_omitted {
 		if omitted.kind == kind &&
 		   omitted.path == path &&
 		   omitted.access == access &&
@@ -747,7 +747,7 @@ record_omitted_path :: proc(
 	}
 
 	_, alloc_err = append(
-		&policy.omitted_path_rules,
+		&policy.rules_path_omitted,
 		Policy_Path_Omission{kind = kind, access = access, path = cloned_path, reason = reason},
 	)
 	if alloc_err != nil {
@@ -792,7 +792,7 @@ allow_path :: proc(
 	}
 
 	no_follow := options.symlink == .Reject
-	for &rule in policy.path_rules {
+	for &rule in policy.rules_path {
 		if rule.kind == kind && rule.path == path {
 			rule.access += access
 			// Keep the stricter open: reject symlinks if any rule for this path did.
@@ -808,7 +808,7 @@ allow_path :: proc(
 	}
 
 	_, alloc_err = append(
-		&policy.path_rules,
+		&policy.rules_path,
 		Policy_Path_Rule{kind = kind, access = access, path = cloned_path, no_follow = no_follow},
 	)
 	if alloc_err != nil {
@@ -865,13 +865,13 @@ allow_tcp_connect :: proc(policy: ^Policy, port: u16) -> Policy_Error {
 		return policy_error_invalid_policy()
 	}
 	_, alloc_err := append(
-		&policy.net_rules,
+		&policy.rules_network,
 		Policy_Net_Rule{access_net = {.Connect_TCP}, port = port},
 	)
 	if alloc_err != nil {
 		return policy_error_allocation(alloc_err)
 	}
-	policy.requested_features += Feature_Set{.Network}
+	policy.features_requested += Feature_Set{.Network}
 	return policy_error_none()
 }
 
@@ -880,13 +880,13 @@ allow_tcp_bind :: proc(policy: ^Policy, port: u16) -> Policy_Error {
 		return policy_error_invalid_policy()
 	}
 	_, alloc_err := append(
-		&policy.net_rules,
+		&policy.rules_network,
 		Policy_Net_Rule{access_net = {.Bind_TCP}, port = port},
 	)
 	if alloc_err != nil {
 		return policy_error_allocation(alloc_err)
 	}
-	policy.requested_features += Feature_Set{.Network}
+	policy.features_requested += Feature_Set{.Network}
 	return policy_error_none()
 }
 
@@ -894,8 +894,8 @@ scope_signal :: proc(policy: ^Policy) -> Policy_Error {
 	if !policy_is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
-	policy.scoped += syscall.Scope_Flags{.Signal}
-	policy.requested_features += Feature_Set{.Scope}
+	policy.rules_scoped += syscall.Scope_Flags{.Signal}
+	policy.features_requested += Feature_Set{.Scope}
 	return policy_error_none()
 }
 
@@ -903,8 +903,8 @@ scope_abstract_unix :: proc(policy: ^Policy) -> Policy_Error {
 	if !policy_is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
-	policy.scoped += syscall.Scope_Flags{.Abstract_Unix_Socket}
-	policy.requested_features += Feature_Set{.Scope}
+	policy.rules_scoped += syscall.Scope_Flags{.Abstract_Unix_Socket}
+	policy.features_requested += Feature_Set{.Scope}
 	return policy_error_none()
 }
 
@@ -912,8 +912,8 @@ enable_log_new_exec :: proc(policy: ^Policy) -> Policy_Error {
 	if !policy_is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
-	policy.restrict_flags += syscall.Restrict_Self_Flags{.Log_New_Exec_On}
-	policy.requested_features += Feature_Set{.Logging}
+	policy.flags_restricted += syscall.Restrict_Self_Flags{.Log_New_Exec_On}
+	policy.features_requested += Feature_Set{.Logging}
 	return policy_error_none()
 }
 
@@ -921,8 +921,8 @@ disable_log_same_exec :: proc(policy: ^Policy) -> Policy_Error {
 	if !policy_is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
-	policy.restrict_flags += syscall.Restrict_Self_Flags{.Log_Same_Exec_Off}
-	policy.requested_features += Feature_Set{.Logging}
+	policy.flags_restricted += syscall.Restrict_Self_Flags{.Log_Same_Exec_Off}
+	policy.features_requested += Feature_Set{.Logging}
 	return policy_error_none()
 }
 
@@ -930,8 +930,8 @@ disable_log_subdomains :: proc(policy: ^Policy) -> Policy_Error {
 	if !policy_is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
-	policy.restrict_flags += syscall.Restrict_Self_Flags{.Log_Subdomains_Off}
-	policy.requested_features += Feature_Set{.Logging}
+	policy.flags_restricted += syscall.Restrict_Self_Flags{.Log_Subdomains_Off}
+	policy.features_requested += Feature_Set{.Logging}
 	return policy_error_none()
 }
 
@@ -939,19 +939,19 @@ enable_thread_sync :: proc(policy: ^Policy) -> Policy_Error {
 	if !policy_is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
-	policy.restrict_flags += syscall.Restrict_Self_Flags{.Tsync}
-	policy.requested_features += Feature_Set{.Thread_Sync}
+	policy.flags_restricted += syscall.Restrict_Self_Flags{.Tsync}
+	policy.features_requested += Feature_Set{.Thread_Sync}
 	return policy_error_none()
 }
 
 policy_is_empty :: proc "contextless" (policy: ^Policy) -> bool {
 	return(
-		policy.requested_features == {} &&
-		len(policy.path_rules) == 0 &&
-		len(policy.omitted_path_rules) == 0 &&
-		len(policy.net_rules) == 0 &&
-		policy.scoped == {} &&
-		policy.restrict_flags == {} \
+		policy.features_requested == {} &&
+		len(policy.rules_path) == 0 &&
+		len(policy.rules_path_omitted) == 0 &&
+		len(policy.rules_network) == 0 &&
+		policy.rules_scoped == {} &&
+		policy.flags_restricted == {} \
 	)
 }
 
@@ -1074,15 +1074,15 @@ requested_feature_support :: proc "contextless" (
 	// only covers handled dimensions, so rules for an unhandled dimension are not
 	// enforced and are surfaced as omitted. This keeps applied ⊆ handled_features
 	// and prevents reporting a dimension as enforced when it is not.
-	fs_handled := .Filesystem in policy.handled
-	net_handled := .Network in policy.handled
-	scope_handled := .Scope in policy.handled
+	fs_handled := .Filesystem in policy.features_handled
+	net_handled := .Network in policy.features_handled
+	scope_handled := .Scope in policy.features_handled
 
-	for _ in policy.omitted_path_rules {
+	for _ in policy.rules_path_omitted {
 		omitted += Feature_Set{.Filesystem}
 	}
 
-	for rule in policy.path_rules {
+	for rule in policy.rules_path {
 		if !fs_handled {
 			omitted += Feature_Set{.Filesystem}
 			continue
@@ -1097,7 +1097,7 @@ requested_feature_support :: proc "contextless" (
 		}
 	}
 
-	for rule in policy.net_rules {
+	for rule in policy.rules_network {
 		if !net_handled {
 			omitted += Feature_Set{.Network}
 			continue
@@ -1111,20 +1111,20 @@ requested_feature_support :: proc "contextless" (
 		}
 	}
 
-	if policy.scoped != {} {
+	if policy.rules_scoped != {} {
 		if !scope_handled {
 			omitted += Feature_Set{.Scope}
 		} else {
-			if policy.scoped & info.supported_scoped != {} {
+			if policy.rules_scoped & info.supported_scoped != {} {
 				applied += Feature_Set{.Scope}
 			}
-			if policy.scoped != policy.scoped & info.supported_scoped {
+			if policy.rules_scoped != policy.rules_scoped & info.supported_scoped {
 				omitted += Feature_Set{.Scope}
 			}
 		}
 	}
 
-	requested_logging := policy.restrict_flags & ABI_RESTRICT_V7
+	requested_logging := policy.flags_restricted & ABI_RESTRICT_V7
 	if requested_logging != {} {
 		if requested_logging & info.supported_restrict != {} {
 			applied += Feature_Set{.Logging}
@@ -1134,7 +1134,7 @@ requested_feature_support :: proc "contextless" (
 		}
 	}
 
-	if .Tsync in policy.restrict_flags {
+	if .Tsync in policy.flags_restricted {
 		if .Tsync in info.supported_restrict {
 			applied += Feature_Set{.Thread_Sync}
 		} else {
@@ -1216,19 +1216,19 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	// An empty handled set would deny-by-default nothing: the kernel rejects an
 	// all-zero ruleset (ENOMSG), so fail early with a clear configuration error
 	// rather than an opaque syscall failure.
-	if policy.handled == {} {
+	if policy.features_handled == {} {
 		return policy_result_invalid_policy(.Empty_Handled_Set)
 	}
 	// A rule targeting an access dimension that handle_features left unhandled is a
 	// construction contradiction: the rule can never take effect. Reject it as an
 	// Invalid_Policy before any kernel call, naming the offending dimension(s) in
 	// omitted_features rather than silently folding them into an ABI-gap omission.
-	if unhandled_with_rules := (policy.requested_features & HANDLED_DEFAULT) - policy.handled;
+	if unhandled_with_rules := (policy.features_requested & HANDLED_DEFAULT) - policy.features_handled;
 	   unhandled_with_rules != {} {
 		return policy_result_error(
 			.Invalid_Policy,
 			policy_error_invalid_policy(.Rule_For_Unhandled_Feature),
-			requested_features = policy.requested_features,
+			requested_features = policy.features_requested,
 			omitted_features = unhandled_with_rules,
 		)
 	}
@@ -1239,9 +1239,9 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			0,
 			0,
 			{},
-			policy.requested_features,
+			policy.features_requested,
 			{},
-			policy.requested_features,
+			policy.features_requested,
 		)
 	}
 
@@ -1253,9 +1253,9 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			abi,
 			0,
 			{},
-			policy.requested_features,
+			policy.features_requested,
 			{},
-			policy.requested_features,
+			policy.features_requested,
 		)
 	}
 
@@ -1266,12 +1266,12 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			abi,
 			0,
 			{},
-			policy.requested_features,
+			policy.features_requested,
 			{},
-			policy.requested_features,
+			policy.features_requested,
 		)
 	}
-	handled_features := handled_features_for_abi(info, policy.handled, policy.requested_features)
+	handled_features := handled_features_for_abi(info, policy.features_handled, policy.features_requested)
 	applied_features, omitted_features := requested_feature_support(policy, info)
 	if omitted_features != {} && !best_effort {
 		return policy_result_error(
@@ -1280,7 +1280,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			abi_requested = abi,
 			abi_used = info.version,
 			handled_features = handled_features,
-			requested_features = policy.requested_features,
+			requested_features = policy.features_requested,
 			omitted_features = omitted_features,
 		)
 	}
@@ -1291,8 +1291,8 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			abi_requested = abi,
 			abi_used = info.version,
 			handled_features = handled_features,
-			requested_features = policy.requested_features,
-			omitted_features = policy.requested_features + omitted_features,
+			requested_features = policy.features_requested,
+			omitted_features = policy.features_requested + omitted_features,
 		)
 	}
 
@@ -1300,16 +1300,16 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	// chosen dimension, then allow per-path/per-port within it (the go-landlock
 	// V<n>.BestEffort() posture). Rights in unhandled dimensions stay free.
 	ruleset_attr := syscall.Ruleset_Attr{}
-	if .Filesystem in policy.handled {
+	if .Filesystem in policy.features_handled {
 		ruleset_attr.Handled_Access_FS = info.supported_access_fs
 	}
-	if .Network in policy.handled {
+	if .Network in policy.features_handled {
 		ruleset_attr.Handled_Access_Net = info.supported_access_net
 	}
-	if .Scope in policy.handled {
+	if .Scope in policy.features_handled {
 		ruleset_attr.Scoped = info.supported_scoped
 	}
-	restrict_flags := policy.restrict_flags & info.supported_restrict
+	restrict_flags := policy.flags_restricted & info.supported_restrict
 
 	ruleset_fd, create_errno := ops.create_ruleset(&ruleset_attr)
 	if create_errno != 0 {
@@ -1318,7 +1318,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			abi,
 			info.version,
 			handled_features,
-			policy.requested_features,
+			policy.features_requested,
 		)
 	}
 
@@ -1327,7 +1327,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	opened, alloc_err = make(
 		[dynamic]Apply_Path_FD,
 		0,
-		len(policy.path_rules),
+		len(policy.rules_path),
 		context.allocator,
 	)
 	if alloc_err != nil {
@@ -1338,12 +1338,12 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			abi_requested = abi,
 			abi_used = info.version,
 			handled_features = handled_features,
-			requested_features = policy.requested_features,
+			requested_features = policy.features_requested,
 		)
 	}
 	defer delete(opened)
 
-	for rule, index in policy.path_rules {
+	for rule, index in policy.rules_path {
 		access := path_access_to_syscall(rule.access) & ruleset_attr.Handled_Access_FS
 		if access == {} {
 			continue
@@ -1357,7 +1357,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 				abi,
 				info.version,
 				handled_features,
-				policy.requested_features,
+				policy.features_requested,
 			)
 		}
 		_, alloc_err = append(
@@ -1374,7 +1374,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 				abi_requested = abi,
 				abi_used = info.version,
 				handled_features = handled_features,
-				requested_features = policy.requested_features,
+				requested_features = policy.features_requested,
 			)
 		}
 	}
@@ -1389,14 +1389,14 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 				abi,
 				info.version,
 				handled_features,
-				policy.requested_features,
+				policy.features_requested,
 			)
 		}
 	}
 	close_opened_path_fds(opened[:])
 	clear(&opened)
 
-	for rule in policy.net_rules {
+	for rule in policy.rules_network {
 		access := rule.access_net & ruleset_attr.Handled_Access_Net
 		if access == {} {
 			continue
@@ -1409,7 +1409,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 				abi,
 				info.version,
 				handled_features,
-				policy.requested_features,
+				policy.features_requested,
 			)
 		}
 	}
@@ -1422,7 +1422,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			abi,
 			info.version,
 			handled_features,
-			policy.requested_features,
+			policy.features_requested,
 		)
 	}
 
@@ -1434,7 +1434,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			abi,
 			info.version,
 			handled_features,
-			policy.requested_features,
+			policy.features_requested,
 		)
 	}
 
@@ -1445,7 +1445,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			abi_requested = abi,
 			abi_used = info.version,
 			handled_features = handled_features,
-			requested_features = policy.requested_features,
+			requested_features = policy.features_requested,
 			applied_features = applied_features,
 			omitted_features = omitted_features,
 			error = Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
@@ -1456,7 +1456,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 		abi_requested = abi,
 		abi_used = info.version,
 		handled_features = handled_features,
-		requested_features = policy.requested_features,
+		requested_features = policy.features_requested,
 		applied_features = applied_features,
 	}
 }
