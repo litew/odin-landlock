@@ -22,6 +22,7 @@ PR_SET_NO_NEW_PRIVS :: 38
 RULESET_ATTR_SIZE :: 24
 
 // Landlock flags
+@(private)
 Create_Ruleset_Flag :: enum {
 	Version = 1,
 	Errata  = 2,
@@ -95,6 +96,7 @@ Scope_Flags :: bit_set[Scope_Flag;u64]
 #assert(size_of(Scope_Flags) == size_of(u64))
 
 // Landlock rule types
+@(private)
 Rule_Type :: enum {
 	Path_Beneath = 1,
 	Net_Port     = 2,

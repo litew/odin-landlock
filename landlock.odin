@@ -181,6 +181,7 @@ Policy_Path_Rule :: struct {
 	no_follow: bool,
 }
 
+@(private)
 Path_Omission_Reason :: enum {
 	Missing,
 }
