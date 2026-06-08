@@ -171,6 +171,7 @@ Path_Options :: struct {
 Path_Access_Flag :: distinct syscall.Access_FS_Flag
 Path_Access :: bit_set[Path_Access_Flag;u64]
 
+@(private)
 Policy_Path_Rule :: struct {
 	kind:      Path_Kind,
 	access:    Path_Access,
@@ -188,6 +189,7 @@ Path_Omission_Reason :: enum {
 
 // Policy_Path_Omission records explicit caller-selected omissions, such as an
 // ignore-if-missing path, so omitted rules are visible in best-effort results.
+@(private)
 Policy_Path_Omission :: struct {
 	kind:   Path_Kind,
 	access: Path_Access,
@@ -195,6 +197,7 @@ Policy_Path_Omission :: struct {
 	reason: Path_Omission_Reason,
 }
 
+@(private)
 Policy_Net_Rule :: struct {
 	access_net: syscall.Access_Net_Flags,
 	port:       u16,

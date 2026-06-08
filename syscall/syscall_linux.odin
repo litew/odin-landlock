@@ -94,6 +94,7 @@ prctl :: proc(option: int, arg2, arg3, arg4, arg5: uintptr) -> os.Error {
 
 // Open_How mirrors `struct open_how` from <linux/openat2.h>, the argument to the
 // openat2(2) syscall. core:sys/linux has no wrapper for it yet.
+@(private)
 Open_How :: struct {
 	flags:   u64,
 	mode:    u64,
