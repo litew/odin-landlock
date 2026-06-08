@@ -73,9 +73,9 @@ main :: proc() {
 	table.row(tbl, "Status", ":", landlock.enum_to_string(result.status))
 	table.row(tbl, "ABI requested, ver.", ":", result.abi_requested)
 	table.row(tbl, "ABI used, ver.", ":", result.abi_used)
-	table.row(tbl, "Features requested", ":", fmt.tprintf("%w", result.requested_features))
-	table.row(tbl, "Features applied", ":", fmt.tprintf("%w", result.applied_features))
-	table.row(tbl, "Features omitted", ":", fmt.tprintf("%w", result.omitted_features))
+	table.row(tbl, "Features requested", ":", fmt.tprintf("%w", result.features_requested))
+	table.row(tbl, "Features applied", ":", fmt.tprintf("%w", result.features_applied))
+	table.row(tbl, "Features omitted", ":", fmt.tprintf("%w", result.features_omitted))
 	table.build(tbl, table.unicode_width_proc)
 	for row in 0 ..< tbl.nr_rows {
 		for col in 0 ..< tbl.nr_cols {
@@ -98,7 +98,7 @@ main :: proc() {
 		fmt.printfln(
 			"partial sandbox (ABI v%d); omitted features = %v",
 			result.abi_used,
-			result.omitted_features,
+			result.features_omitted,
 		)
 	case .Unavailable, .Disabled, .Unsupported_Platform:
 		// Kernel has no/disabled Landlock.

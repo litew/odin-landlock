@@ -12,7 +12,7 @@
     Typical flow: init, then the allow/scope/enable builder procs, then
     apply_strict or apply_best_effort, inspect Policy_Result, then cleanup. apply_strict requires
     the full requested policy; apply_best_effort tolerates older kernels and
-    reports the gap via Policy_Result (status, abi_used, applied/omitted_features). apply_strict
+    reports the gap via Policy_Result (status, abi_used, features_applied/features_omitted). apply_strict
     returns Enforced or Unsupported_Feature; Partially_Enforced is exclusive to apply_best_effort.
     apply never aborts the process: fail closed by checking is_enforced(result)
     (or the status) — ignoring it leaves the process unsandboxed.
@@ -298,10 +298,10 @@ Policy_Result :: struct {
 	status:             Policy_Status,
 	abi_requested:      int,
 	abi_used:           int,
-	handled_features:   Feature_Set,
-	requested_features: Feature_Set,
-	applied_features:   Feature_Set,
-	omitted_features:   Feature_Set,
+	features_handled:   Feature_Set,
+	features_requested: Feature_Set,
+	features_applied:   Feature_Set,
+	features_omitted:   Feature_Set,
 	error:              Policy_Error,
 }
 
@@ -332,17 +332,17 @@ policy_result_error :: proc "contextless" (
 	error: Policy_Error,
 	abi_requested: int = 0,
 	abi_used: int = 0,
-	handled_features: Feature_Set = {},
-	requested_features: Feature_Set = {},
-	omitted_features: Feature_Set = {},
+	features_handled: Feature_Set = {},
+	features_requested: Feature_Set = {},
+	features_omitted: Feature_Set = {},
 ) -> Policy_Result {
 	return Policy_Result {
 		status = status,
 		abi_requested = abi_requested,
 		abi_used = abi_used,
-		handled_features = handled_features,
-		requested_features = requested_features,
-		omitted_features = omitted_features,
+		features_handled = features_handled,
+		features_requested = features_requested,
+		features_omitted = features_omitted,
 		error = error,
 	}
 }
@@ -448,13 +448,13 @@ debug_summary :: proc(
 		result.abi_requested,
 		result.abi_used,
 	)
-	write_feature_set(&builder, result.handled_features)
+	write_feature_set(&builder, result.features_handled)
 	fmt.sbprint(&builder, " requested=")
-	write_feature_set(&builder, result.requested_features)
+	write_feature_set(&builder, result.features_requested)
 	fmt.sbprint(&builder, " applied=")
-	write_feature_set(&builder, result.applied_features)
+	write_feature_set(&builder, result.features_applied)
 	fmt.sbprint(&builder, " omitted=")
-	write_feature_set(&builder, result.omitted_features)
+	write_feature_set(&builder, result.features_omitted)
 	fmt.sbprintf(
 		&builder,
 		" error_kind=%v error_cause=%v raw_errno=%d validation=%v",
@@ -497,7 +497,7 @@ policy_result_unsupported_feature :: proc "contextless" (feature: Feature) -> Po
 	return policy_result_error(
 		.Partially_Enforced,
 		Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
-		omitted_features = Feature_Set{feature},
+		features_omitted = Feature_Set{feature},
 	)
 }
 
@@ -1072,7 +1072,7 @@ requested_feature_support :: proc "contextless" (
 ) {
 	// A dimension can only be applied if it is in the handled set — deny-by-default
 	// only covers handled dimensions, so rules for an unhandled dimension are not
-	// enforced and are surfaced as omitted. This keeps applied ⊆ handled_features
+	// enforced and are surfaced as omitted. This keeps applied ⊆ features_handled
 	// and prevents reporting a dimension as enforced when it is not.
 	fs_handled := .Filesystem in policy.features_handled
 	net_handled := .Network in policy.features_handled
@@ -1178,18 +1178,18 @@ policy_result_with_context :: proc "contextless" (
 	result: Policy_Result,
 	abi_requested: int,
 	abi_used: int,
-	handled_features: Feature_Set,
-	requested_features: Feature_Set,
-	applied_features: Feature_Set = {},
-	omitted_features: Feature_Set = {},
+	features_handled: Feature_Set,
+	features_requested: Feature_Set,
+	features_applied: Feature_Set = {},
+	features_omitted: Feature_Set = {},
 ) -> Policy_Result {
 	updated := result
 	updated.abi_requested = abi_requested
 	updated.abi_used = abi_used
-	updated.handled_features = handled_features
-	updated.requested_features = requested_features
-	updated.applied_features = applied_features
-	updated.omitted_features = omitted_features
+	updated.features_handled = features_handled
+	updated.features_requested = features_requested
+	updated.features_applied = features_applied
+	updated.features_omitted = features_omitted
 	return updated
 }
 
@@ -1222,14 +1222,14 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	// A rule targeting an access dimension that handle_features left unhandled is a
 	// construction contradiction: the rule can never take effect. Reject it as an
 	// Invalid_Policy before any kernel call, naming the offending dimension(s) in
-	// omitted_features rather than silently folding them into an ABI-gap omission.
+	// features_omitted rather than silently folding them into an ABI-gap omission.
 	if unhandled_with_rules := (policy.features_requested & HANDLED_DEFAULT) - policy.features_handled;
 	   unhandled_with_rules != {} {
 		return policy_result_error(
 			.Invalid_Policy,
 			policy_error_invalid_policy(.Rule_For_Unhandled_Feature),
-			requested_features = policy.features_requested,
-			omitted_features = unhandled_with_rules,
+			features_requested = policy.features_requested,
+			features_omitted = unhandled_with_rules,
 		)
 	}
 
@@ -1271,28 +1271,28 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			policy.features_requested,
 		)
 	}
-	handled_features := handled_features_for_abi(info, policy.features_handled, policy.features_requested)
-	applied_features, omitted_features := requested_feature_support(policy, info)
-	if omitted_features != {} && !best_effort {
+	features_handled := handled_features_for_abi(info, policy.features_handled, policy.features_requested)
+	features_applied, features_omitted := requested_feature_support(policy, info)
+	if features_omitted != {} && !best_effort {
 		return policy_result_error(
 			.Unsupported_Feature,
 			Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
 			abi_requested = abi,
 			abi_used = info.version,
-			handled_features = handled_features,
-			requested_features = policy.features_requested,
-			omitted_features = omitted_features,
+			features_handled = features_handled,
+			features_requested = policy.features_requested,
+			features_omitted = features_omitted,
 		)
 	}
-	if applied_features == {} {
+	if features_applied == {} {
 		return policy_result_error(
 			.Unsupported_Feature,
 			Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
 			abi_requested = abi,
 			abi_used = info.version,
-			handled_features = handled_features,
-			requested_features = policy.features_requested,
-			omitted_features = policy.features_requested + omitted_features,
+			features_handled = features_handled,
+			features_requested = policy.features_requested,
+			features_omitted = policy.features_requested + features_omitted,
 		)
 	}
 
@@ -1317,7 +1317,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			apply_result_for_errno(.Create_Ruleset, create_errno),
 			abi,
 			info.version,
-			handled_features,
+			features_handled,
 			policy.features_requested,
 		)
 	}
@@ -1337,8 +1337,8 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			policy_error_allocation(alloc_err),
 			abi_requested = abi,
 			abi_used = info.version,
-			handled_features = handled_features,
-			requested_features = policy.features_requested,
+			features_handled = features_handled,
+			features_requested = policy.features_requested,
 		)
 	}
 	defer delete(opened)
@@ -1356,7 +1356,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 				apply_result_for_errno(.Add_Rule, open_errno),
 				abi,
 				info.version,
-				handled_features,
+				features_handled,
 				policy.features_requested,
 			)
 		}
@@ -1373,8 +1373,8 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 				policy_error_allocation(alloc_err),
 				abi_requested = abi,
 				abi_used = info.version,
-				handled_features = handled_features,
-				requested_features = policy.features_requested,
+				features_handled = features_handled,
+				features_requested = policy.features_requested,
 			)
 		}
 	}
@@ -1388,7 +1388,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 				apply_result_for_errno(.Add_Rule, add_errno),
 				abi,
 				info.version,
-				handled_features,
+				features_handled,
 				policy.features_requested,
 			)
 		}
@@ -1408,7 +1408,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 				apply_result_for_errno(.Add_Rule, add_errno),
 				abi,
 				info.version,
-				handled_features,
+				features_handled,
 				policy.features_requested,
 			)
 		}
@@ -1421,7 +1421,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			policy_result_no_new_privs_failed(prctl_errno),
 			abi,
 			info.version,
-			handled_features,
+			features_handled,
 			policy.features_requested,
 		)
 	}
@@ -1433,21 +1433,21 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			apply_result_for_errno(.Restrict_Self, restrict_errno),
 			abi,
 			info.version,
-			handled_features,
+			features_handled,
 			policy.features_requested,
 		)
 	}
 
 	close_ruleset_fd(ruleset_fd)
-	if omitted_features != {} {
+	if features_omitted != {} {
 		return Policy_Result {
 			status = .Partially_Enforced,
 			abi_requested = abi,
 			abi_used = info.version,
-			handled_features = handled_features,
-			requested_features = policy.features_requested,
-			applied_features = applied_features,
-			omitted_features = omitted_features,
+			features_handled = features_handled,
+			features_requested = policy.features_requested,
+			features_applied = features_applied,
+			features_omitted = features_omitted,
 			error = Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
 		}
 	}
@@ -1455,9 +1455,9 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 		status = .Enforced,
 		abi_requested = abi,
 		abi_used = info.version,
-		handled_features = handled_features,
-		requested_features = policy.features_requested,
-		applied_features = applied_features,
+		features_handled = features_handled,
+		features_requested = policy.features_requested,
+		features_applied = features_applied,
 	}
 }
 

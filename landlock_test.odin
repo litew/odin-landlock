@@ -122,7 +122,7 @@ test_unsupported_feature_is_omitted :: proc(t: ^testing.T) {
 	result := policy_result_unsupported_feature(.Network)
 	testing.expect_value(t, result.status, Policy_Status.Partially_Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Unsupported_Feature)
-	testing.expect(t, .Network in result.omitted_features, "unsupported feature should be recorded")
+	testing.expect(t, .Network in result.features_omitted, "unsupported feature should be recorded")
 }
 
 @(test)
@@ -205,9 +205,9 @@ enforced_result :: proc(abi_used: int, applied: Feature_Set) -> Policy_Result {
 		status = .Enforced,
 		abi_requested = abi_used,
 		abi_used = abi_used,
-		handled_features = applied,
-		requested_features = applied,
-		applied_features = applied,
+		features_handled = applied,
+		features_requested = applied,
+		features_applied = applied,
 	}
 }
 
@@ -222,10 +222,10 @@ test_policy_debug_summary_allocates_and_caller_frees :: proc(t: ^testing.T) {
 		status = .Partially_Enforced,
 		abi_requested = 999,
 		abi_used = 9,
-		handled_features = {.Filesystem, .Network, .Scope, .Logging, .Thread_Sync},
-		requested_features = {.Filesystem, .Network},
-		applied_features = {.Filesystem},
-		omitted_features = {.Network},
+		features_handled = {.Filesystem, .Network, .Scope, .Logging, .Thread_Sync},
+		features_requested = {.Filesystem, .Network},
+		features_applied = {.Filesystem},
+		features_omitted = {.Network},
 		error = Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
 	}
 	summary, err := debug_summary(result, allocator)
@@ -433,7 +433,7 @@ test_missing_path_default_and_ignore_option :: proc(t: ^testing.T) {
 	defer apply_ops = saved_ops
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Unsupported_Feature)
-	testing.expect(t, .Filesystem in result.omitted_features, "missing ignored path should be reported as omitted")
+	testing.expect(t, .Filesystem in result.features_omitted, "missing ignored path should be reported as omitted")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 }
 
@@ -523,8 +523,8 @@ test_refer_unsupported_abi_is_omitted :: proc(t: ^testing.T) {
 
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Partially_Enforced)
-	testing.expect(t, .Filesystem in result.applied_features, "read dir part should still apply")
-	testing.expect(t, .Filesystem in result.omitted_features, "unsupported refer part should be omitted")
+	testing.expect(t, .Filesystem in result.features_applied, "read dir part should still apply")
+	testing.expect(t, .Filesystem in result.features_omitted, "unsupported refer part should be omitted")
 	testing.expect_value(t, count_fake_calls(.Add_Path), 1)
 	testing.expect(t, .Read_Dir in fake_state.calls[3].fs_access, "read dir should be passed to fake add path")
 	testing.expect(t, !(.Refer in fake_state.calls[3].fs_access), "refer must not be passed on abi v1")
@@ -783,7 +783,7 @@ test_apply_success_uses_fake_flow_and_closes_fds :: proc(t: ^testing.T) {
 	result := apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.None)
-	testing.expect(t, .Filesystem in result.applied_features, "filesystem feature should be applied")
+	testing.expect(t, .Filesystem in result.features_applied, "filesystem feature should be applied")
 	testing.expect_value(t, count_fake_calls(.Close, 20), 1)
 	testing.expect_value(t, count_fake_calls(.Close, 3), 1)
 
@@ -860,9 +860,9 @@ test_non_linux_apply_reports_unsupported_platform :: proc(t: ^testing.T) {
 		testing.expect_value(t, result.error.kind, Policy_Error_Kind.Unsupported_Platform)
 		testing.expect_value(t, result.abi_requested, 0)
 		testing.expect_value(t, result.abi_used, 0)
-		testing.expect_value(t, result.applied_features, Feature_Set{})
-		testing.expect_value(t, result.requested_features, policy.features_requested)
-		testing.expect_value(t, result.omitted_features, policy.features_requested)
+		testing.expect_value(t, result.features_applied, Feature_Set{})
+		testing.expect_value(t, result.features_requested, policy.features_requested)
+		testing.expect_value(t, result.features_omitted, policy.features_requested)
 	} else {
 		testing.expect(t, true, "non-Linux unsupported-platform check is target-gated")
 	}
@@ -886,8 +886,8 @@ test_best_effort_enosys_reports_unavailable :: proc(t: ^testing.T) {
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Unavailable)
 	testing.expect_value(t, result.error.cause, Policy_Error_Cause.ABI_Probe)
 	testing.expect_value(t, result.error.raw_errno, i32(38))
-	testing.expect(t, .Filesystem in result.omitted_features, "filesystem intent should be visibly omitted")
-	testing.expect(t, .Network in result.omitted_features, "network intent should be visibly omitted")
+	testing.expect(t, .Filesystem in result.features_omitted, "filesystem intent should be visibly omitted")
+	testing.expect(t, .Network in result.features_omitted, "network intent should be visibly omitted")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 
 	summary, err := debug_summary(result)
@@ -920,7 +920,7 @@ test_best_effort_eopnotsupp_reports_disabled :: proc(t: ^testing.T) {
 	testing.expect(t, result.status != .Enforced, "disabled Landlock must not be reported as enforced")
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Disabled)
 	testing.expect_value(t, result.error.raw_errno, i32(95))
-	testing.expect(t, .Filesystem in result.omitted_features, "filesystem intent should be visibly omitted")
+	testing.expect(t, .Filesystem in result.features_omitted, "filesystem intent should be visibly omitted")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 
 	summary, err := debug_summary(result)
@@ -1040,15 +1040,15 @@ test_best_effort_omits_unsupported_feature_but_applies_supported_rules :: proc(t
 
 	strict_result := apply_strict(&policy)
 	testing.expect_value(t, strict_result.status, Policy_Status.Unsupported_Feature)
-	testing.expect(t, .Network in strict_result.omitted_features, "strict apply should report unsupported network")
+	testing.expect(t, .Network in strict_result.features_omitted, "strict apply should report unsupported network")
 
 	fake_reset()
 	fake_state.abi = 1
 	apply_ops = fake_apply_ops()
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Partially_Enforced)
-	testing.expect(t, .Filesystem in result.applied_features, "best effort should apply supported filesystem")
-	testing.expect(t, .Network in result.omitted_features, "best effort should report omitted network")
+	testing.expect(t, .Filesystem in result.features_applied, "best effort should apply supported filesystem")
+	testing.expect(t, .Network in result.features_omitted, "best effort should report omitted network")
 	testing.expect_value(t, count_fake_calls(.Add_Net), 0)
 	testing.expect_value(t, count_fake_calls(.Close, 20), 1)
 	testing.expect_value(t, count_fake_calls(.Close, 3), 1)
@@ -1067,8 +1067,8 @@ test_best_effort_full_enforcement_debug_summary :: proc(t: ^testing.T) {
 
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, .Filesystem in result.applied_features, "filesystem should apply")
-	testing.expect_value(t, result.omitted_features, Feature_Set{})
+	testing.expect(t, .Filesystem in result.features_applied, "filesystem should apply")
+	testing.expect_value(t, result.features_omitted, Feature_Set{})
 
 	summary, err := debug_summary(result)
 	testing.expect_value(t, err.kind, Policy_Error_Kind.None)
@@ -1102,12 +1102,12 @@ test_best_effort_future_abi_999_uses_known_max :: proc(t: ^testing.T) {
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
 	testing.expect_value(t, result.abi_requested, 999)
 	testing.expect_value(t, result.abi_used, 9)
-	testing.expect(t, .Filesystem in result.applied_features, "filesystem should apply at clamped abi v9")
-	testing.expect(t, .Network in result.applied_features, "network should apply at clamped abi v9")
-	testing.expect(t, .Scope in result.applied_features, "scope should apply at clamped abi v9")
-	testing.expect(t, .Logging in result.applied_features, "logging should apply at clamped abi v9")
-	testing.expect(t, .Thread_Sync in result.applied_features, "TSYNC should apply at clamped abi v9")
-	testing.expect_value(t, result.omitted_features, Feature_Set{})
+	testing.expect(t, .Filesystem in result.features_applied, "filesystem should apply at clamped abi v9")
+	testing.expect(t, .Network in result.features_applied, "network should apply at clamped abi v9")
+	testing.expect(t, .Scope in result.features_applied, "scope should apply at clamped abi v9")
+	testing.expect(t, .Logging in result.features_applied, "logging should apply at clamped abi v9")
+	testing.expect(t, .Thread_Sync in result.features_applied, "TSYNC should apply at clamped abi v9")
+	testing.expect_value(t, result.features_omitted, Feature_Set{})
 	// Create call carries the full deny-by-default handled set for the ABI...
 	testing.expect_value(t, fake_state.calls[1].fs_access, abi_versions[9].supported_access_fs)
 	testing.expect_value(t, fake_state.calls[1].net_access, syscall.Access_Net_Flags{.Bind_TCP, .Connect_TCP})
@@ -1144,8 +1144,8 @@ test_best_effort_omitted_only_policy_is_not_enforced :: proc(t: ^testing.T) {
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Unsupported_Feature)
 	testing.expect(t, result.status != .Enforced, "omitted-only policy must not be reported as enforced")
-	testing.expect_value(t, result.applied_features, Feature_Set{})
-	testing.expect(t, .Filesystem in result.omitted_features, "omitted-only filesystem intent should be visible")
+	testing.expect_value(t, result.features_applied, Feature_Set{})
+	testing.expect(t, .Filesystem in result.features_omitted, "omitted-only filesystem intent should be visible")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 }
 
@@ -1177,7 +1177,7 @@ test_network_options_abi3_vs_abi4 :: proc(t: ^testing.T) {
 
 	strict_result := apply_strict(&policy)
 	testing.expect_value(t, strict_result.status, Policy_Status.Unsupported_Feature)
-	testing.expect(t, .Network in strict_result.omitted_features, "abi v3 strict apply should omit network")
+	testing.expect(t, .Network in strict_result.features_omitted, "abi v3 strict apply should omit network")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 	testing.expect_value(t, count_fake_calls(.Add_Net), 0)
 
@@ -1186,7 +1186,7 @@ test_network_options_abi3_vs_abi4 :: proc(t: ^testing.T) {
 	apply_ops = fake_apply_ops()
 	result := apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, .Network in result.applied_features, "abi v4 should apply network")
+	testing.expect(t, .Network in result.features_applied, "abi v4 should apply network")
 	testing.expect_value(t, count_fake_calls(.Add_Net), 2)
 	testing.expect_value(t, fake_state.calls[2].arg2, 0)
 	testing.expect(t, .Bind_TCP in fake_state.calls[2].net_access, "bind rule should preserve port zero")
@@ -1208,7 +1208,7 @@ test_scope_options_abi5_vs_abi6 :: proc(t: ^testing.T) {
 
 	strict_result := apply_strict(&policy)
 	testing.expect_value(t, strict_result.status, Policy_Status.Unsupported_Feature)
-	testing.expect(t, .Scope in strict_result.omitted_features, "abi v5 strict apply should omit scope")
+	testing.expect(t, .Scope in strict_result.features_omitted, "abi v5 strict apply should omit scope")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 
 	fake_reset()
@@ -1216,7 +1216,7 @@ test_scope_options_abi5_vs_abi6 :: proc(t: ^testing.T) {
 	apply_ops = fake_apply_ops()
 	result := apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, .Scope in result.applied_features, "abi v6 should apply scope")
+	testing.expect(t, .Scope in result.features_applied, "abi v6 should apply scope")
 	testing.expect(t, .Signal in fake_state.calls[1].scoped, "ruleset attr should include signal scope")
 	testing.expect(t, .Abstract_Unix_Socket in fake_state.calls[1].scoped, "ruleset attr should include abstract unix scope")
 }
@@ -1255,8 +1255,8 @@ test_logging_options_abi6_vs_abi7 :: proc(t: ^testing.T) {
 
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Partially_Enforced)
-	testing.expect(t, .Filesystem in result.applied_features, "filesystem should still apply at abi v6")
-	testing.expect(t, .Logging in result.omitted_features, "abi v6 should omit logging")
+	testing.expect(t, .Filesystem in result.features_applied, "filesystem should still apply at abi v6")
+	testing.expect(t, .Logging in result.features_omitted, "abi v6 should omit logging")
 	testing.expect_value(t, fake_state.calls[fake_state.call_count - 2].flags, syscall.Restrict_Self_Flags{})
 
 	fake_reset()
@@ -1264,7 +1264,7 @@ test_logging_options_abi6_vs_abi7 :: proc(t: ^testing.T) {
 	apply_ops = fake_apply_ops()
 	result = apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, .Logging in result.applied_features, "abi v7 should apply logging")
+	testing.expect(t, .Logging in result.features_applied, "abi v7 should apply logging")
 	restrict_call := fake_state.calls[fake_state.call_count - 2]
 	testing.expect(t, .Log_New_Exec_On in restrict_call.flags, "new exec logging flag should be passed")
 	testing.expect(t, .Log_Same_Exec_Off in restrict_call.flags, "same exec logging flag should be passed")
@@ -1285,7 +1285,7 @@ test_thread_sync_abi7_vs_abi8 :: proc(t: ^testing.T) {
 
 	strict_result := apply_strict(&policy)
 	testing.expect_value(t, strict_result.status, Policy_Status.Unsupported_Feature)
-	testing.expect(t, .Thread_Sync in strict_result.omitted_features, "abi v7 strict apply should report omitted TSYNC")
+	testing.expect(t, .Thread_Sync in strict_result.features_omitted, "abi v7 strict apply should report omitted TSYNC")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 
 	fake_reset()
@@ -1293,8 +1293,8 @@ test_thread_sync_abi7_vs_abi8 :: proc(t: ^testing.T) {
 	apply_ops = fake_apply_ops()
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Partially_Enforced)
-	testing.expect(t, .Filesystem in result.applied_features, "filesystem should still apply at abi v7")
-	testing.expect(t, .Thread_Sync in result.omitted_features, "abi v7 best effort should report omitted TSYNC")
+	testing.expect(t, .Filesystem in result.features_applied, "filesystem should still apply at abi v7")
+	testing.expect(t, .Thread_Sync in result.features_omitted, "abi v7 best effort should report omitted TSYNC")
 	testing.expect(t, !(.Tsync in fake_state.calls[fake_state.call_count - 2].flags), "TSYNC must not be passed below abi v8")
 
 	fake_reset()
@@ -1302,7 +1302,7 @@ test_thread_sync_abi7_vs_abi8 :: proc(t: ^testing.T) {
 	apply_ops = fake_apply_ops()
 	result = apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, .Thread_Sync in result.applied_features, "abi v8 should apply explicit TSYNC")
+	testing.expect(t, .Thread_Sync in result.features_applied, "abi v8 should apply explicit TSYNC")
 	testing.expect(t, .Tsync in fake_state.calls[fake_state.call_count - 2].flags, "TSYNC should be passed at abi v8")
 }
 
@@ -1319,8 +1319,8 @@ test_resolve_unix_path_access_abi8_vs_abi9 :: proc(t: ^testing.T) {
 
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Partially_Enforced)
-	testing.expect(t, .Filesystem in result.applied_features, "read dir should apply at abi v8")
-	testing.expect(t, .Filesystem in result.omitted_features, "abi v8 should omit the unsupported FS right (Resolve_Unix)")
+	testing.expect(t, .Filesystem in result.features_applied, "read dir should apply at abi v8")
+	testing.expect(t, .Filesystem in result.features_omitted, "abi v8 should omit the unsupported FS right (Resolve_Unix)")
 	testing.expect(t, .Read_Dir in fake_state.calls[3].fs_access, "supported access should be added")
 	testing.expect(t, !(.Resolve_Unix in fake_state.calls[3].fs_access), "Resolve_Unix must not be passed at abi v8")
 
@@ -1329,7 +1329,7 @@ test_resolve_unix_path_access_abi8_vs_abi9 :: proc(t: ^testing.T) {
 	apply_ops = fake_apply_ops()
 	result = apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, .Filesystem in result.applied_features, "abi v9 should apply filesystem (incl. Resolve_Unix)")
+	testing.expect(t, .Filesystem in result.features_applied, "abi v9 should apply filesystem (incl. Resolve_Unix)")
 	testing.expect(t, .Resolve_Unix in fake_state.calls[3].fs_access, "Resolve_Unix should be passed per-path at abi v9")
 }
 
@@ -1351,8 +1351,8 @@ test_default_handles_all_dimensions_deny_by_default :: proc(t: ^testing.T) {
 	testing.expect_value(t, fake_state.calls[1].fs_access, abi_versions[9].supported_access_fs)
 	testing.expect_value(t, fake_state.calls[1].net_access, abi_versions[9].supported_access_net)
 	testing.expect_value(t, fake_state.calls[1].scoped, abi_versions[9].supported_scoped)
-	testing.expect(t, .Network in result.handled_features, "network is denied by default even without a net rule")
-	testing.expect(t, .Scope in result.handled_features, "scope is denied by default even without a scope rule")
+	testing.expect(t, .Network in result.features_handled, "network is denied by default even without a net rule")
+	testing.expect(t, .Scope in result.features_handled, "scope is denied by default even without a scope rule")
 }
 
 @(test)
@@ -1373,9 +1373,9 @@ test_policy_handle_narrows_handled_set :: proc(t: ^testing.T) {
 	testing.expect_value(t, fake_state.calls[1].fs_access, abi_versions[9].supported_access_fs)
 	testing.expect_value(t, fake_state.calls[1].net_access, syscall.Access_Net_Flags{})
 	testing.expect_value(t, fake_state.calls[1].scoped, syscall.Scope_Flags{})
-	testing.expect(t, .Filesystem in result.handled_features, "filesystem stays handled")
-	testing.expect(t, !(.Network in result.handled_features), "network left unrestricted when not handled")
-	testing.expect(t, !(.Scope in result.handled_features), "scope left unrestricted when not handled")
+	testing.expect(t, .Filesystem in result.features_handled, "filesystem stays handled")
+	testing.expect(t, !(.Network in result.features_handled), "network left unrestricted when not handled")
+	testing.expect(t, !(.Scope in result.features_handled), "scope left unrestricted when not handled")
 }
 
 @(test)
@@ -1384,7 +1384,7 @@ test_logging_thread_sync_not_handled_unless_enabled :: proc(t: ^testing.T) {
 	defer apply_ops = saved_ops
 	fake_state.abi = 9 // ABI supports logging + TSYNC
 
-	// No enable_* calls: Logging/Thread_Sync must NOT appear in handled_features
+	// No enable_* calls: Logging/Thread_Sync must NOT appear in features_handled
 	// even though the running ABI supports them (they are opt-in restrict flags).
 	policy: Policy
 	expect_policy_ok(t, init(&policy), "init")
@@ -1393,8 +1393,8 @@ test_logging_thread_sync_not_handled_unless_enabled :: proc(t: ^testing.T) {
 
 	result := apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, !(.Logging in result.handled_features), "logging not handled unless enabled")
-	testing.expect(t, !(.Thread_Sync in result.handled_features), "thread_sync not handled unless enabled")
+	testing.expect(t, !(.Logging in result.features_handled), "logging not handled unless enabled")
+	testing.expect(t, !(.Thread_Sync in result.features_handled), "thread_sync not handled unless enabled")
 }
 
 @(test)
@@ -1413,8 +1413,8 @@ test_logging_thread_sync_handled_when_enabled :: proc(t: ^testing.T) {
 
 	result := apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, .Logging in result.handled_features, "logging handled when enabled")
-	testing.expect(t, .Thread_Sync in result.handled_features, "thread_sync handled when enabled")
+	testing.expect(t, .Logging in result.features_handled, "logging handled when enabled")
+	testing.expect(t, .Thread_Sync in result.features_handled, "thread_sync handled when enabled")
 }
 
 @(test)
@@ -1426,7 +1426,7 @@ test_rule_for_unhandled_feature_rejected :: proc(t: ^testing.T) {
 	// Narrowing the handled set to Network but still adding a filesystem rule is a
 	// construction contradiction: the FS rule can never take effect. It must be
 	// rejected at apply (Invalid_Policy / Rule_For_Unhandled_Feature) in BOTH apply
-	// modes, before any kernel call — not silently folded into omitted_features as
+	// modes, before any kernel call — not silently folded into features_omitted as
 	// if it were an ABI gap.
 	policy: Policy
 	expect_policy_ok(t, init(&policy), "init")
@@ -1438,8 +1438,8 @@ test_rule_for_unhandled_feature_rejected :: proc(t: ^testing.T) {
 	strict := apply_strict(&policy)
 	testing.expect_value(t, strict.status, Policy_Status.Invalid_Policy)
 	testing.expect_value(t, strict.error.validation, Policy_Validation_Failure.Rule_For_Unhandled_Feature)
-	testing.expect(t, .Filesystem in strict.omitted_features, "offending unhandled dimension named in omitted_features")
-	testing.expect(t, !(.Network in strict.omitted_features), "handled dimension is not flagged")
+	testing.expect(t, .Filesystem in strict.features_omitted, "offending unhandled dimension named in features_omitted")
+	testing.expect(t, !(.Network in strict.features_omitted), "handled dimension is not flagged")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 
 	fake_reset()
@@ -1467,8 +1467,8 @@ test_handled_dimensions_with_matching_rules_ok :: proc(t: ^testing.T) {
 	result := apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
 	testing.expect(t, result.error.validation != .Rule_For_Unhandled_Feature, "no false contradiction")
-	testing.expect(t, .Filesystem in result.applied_features, "fs applied")
-	testing.expect(t, .Network in result.applied_features, "net applied")
+	testing.expect(t, .Filesystem in result.features_applied, "fs applied")
+	testing.expect(t, .Network in result.features_applied, "net applied")
 }
 
 @(test)
