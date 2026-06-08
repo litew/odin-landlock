@@ -1,3 +1,4 @@
+#+private
 package landlock
 
 import "core:testing"
