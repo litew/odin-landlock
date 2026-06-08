@@ -245,15 +245,13 @@ Feature :: enum {
 }
 Feature_Set :: bit_set[Feature;u64]
 
+// Policy_Status is the coarse outcome of apply: did the requested policy take
+// effect? The reason for a non-enforced outcome (unavailable kernel, invalid
+// policy, unsupported feature, ...) lives in Policy_Result.error.kind.
 Policy_Status :: enum {
 	Enforced,
 	Partially_Enforced,
-	Unavailable,
-	Disabled,
-	Unsupported_Platform,
-	Invalid_Policy,
-	Skipped_For_Test,
-	Unsupported_Feature,
+	Not_Enforced,
 }
 
 Policy_Error_Kind :: enum {
@@ -381,18 +379,8 @@ summary_text :: proc "contextless" (result: Policy_Result) -> string {
 		return "landlock enforced"
 	case .Partially_Enforced:
 		return "landlock partially enforced"
-	case .Unavailable:
-		return "landlock unavailable"
-	case .Disabled:
-		return "landlock disabled"
-	case .Unsupported_Platform:
-		return "landlock unsupported platform"
-	case .Invalid_Policy:
-		return "landlock invalid policy"
-	case .Skipped_For_Test:
-		return "landlock skipped for test"
-	case .Unsupported_Feature:
-		return "landlock unsupported feature"
+	case .Not_Enforced:
+		return "landlock not enforced"
 	}
 	return "landlock unknown status"
 }
@@ -500,20 +488,20 @@ debug_summary :: proc(
 @(private)
 policy_result_unavailable :: proc "contextless" (raw_errno: i32) -> Policy_Result {
 	return policy_result_error(
-		.Unavailable,
+		.Not_Enforced,
 		policy_error_errno(.Unavailable, .ABI_Probe, raw_errno),
 	)
 }
 
 @(private)
 policy_result_disabled :: proc "contextless" (raw_errno: i32) -> Policy_Result {
-	return policy_result_error(.Disabled, policy_error_errno(.Disabled, .ABI_Probe, raw_errno))
+	return policy_result_error(.Not_Enforced, policy_error_errno(.Disabled, .ABI_Probe, raw_errno))
 }
 
 @(private)
 policy_result_unsupported_platform :: proc "contextless" () -> Policy_Result {
 	return policy_result_error(
-		.Unsupported_Platform,
+		.Not_Enforced,
 		Policy_Error{kind = .Unsupported_Platform, cause = .Unsupported_Platform},
 	)
 }
@@ -531,7 +519,7 @@ policy_result_unsupported_feature :: proc "contextless" (feature: Feature) -> Po
 policy_result_invalid_policy :: proc "contextless" (
 	validation: Policy_Validation_Failure = .None,
 ) -> Policy_Result {
-	return policy_result_error(.Invalid_Policy, policy_error_invalid_policy(validation))
+	return policy_result_error(.Not_Enforced, policy_error_invalid_policy(validation))
 }
 
 @(private)
@@ -540,7 +528,7 @@ policy_result_permission_denied_for :: proc "contextless" (
 	raw_errno: i32,
 ) -> Policy_Result {
 	return policy_result_error(
-		.Unavailable,
+		.Not_Enforced,
 		policy_error_errno(.Permission_Denied, cause, raw_errno),
 	)
 }
@@ -548,7 +536,7 @@ policy_result_permission_denied_for :: proc "contextless" (
 @(private)
 policy_result_no_new_privs_failed :: proc "contextless" (raw_errno: i32) -> Policy_Result {
 	return policy_result_error(
-		.Unavailable,
+		.Not_Enforced,
 		policy_error_errno(.No_New_Privs_Failed, .Set_No_New_Privs, raw_errno),
 	)
 }
@@ -558,13 +546,13 @@ policy_result_syscall_failed :: proc "contextless" (
 	cause: Policy_Error_Cause,
 	raw_errno: i32,
 ) -> Policy_Result {
-	return policy_result_error(.Unavailable, policy_error_errno(.Syscall_Failed, cause, raw_errno))
+	return policy_result_error(.Not_Enforced, policy_error_errno(.Syscall_Failed, cause, raw_errno))
 }
 
 @(private)
 policy_result_skipped_for_test :: proc "contextless" () -> Policy_Result {
 	return policy_result_error(
-		.Skipped_For_Test,
+		.Not_Enforced,
 		Policy_Error{kind = .Skipped_For_Test, cause = .Test_Harness},
 	)
 }
@@ -1295,7 +1283,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	if unhandled_with_rules := (policy.features_requested & HANDLED_DEFAULT) - policy.features_handled;
 	   unhandled_with_rules != {} {
 		return policy_result_error(
-			.Invalid_Policy,
+			.Not_Enforced,
 			policy_error_invalid_policy(.Rule_For_Unhandled_Feature),
 			features_requested = policy.features_requested,
 			features_omitted = unhandled_with_rules,
@@ -1344,7 +1332,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	features_applied, features_omitted := requested_feature_support(policy, info)
 	if features_omitted != {} && !best_effort {
 		return policy_result_error(
-			.Unsupported_Feature,
+			.Not_Enforced,
 			Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
 			abi_requested = abi,
 			abi_used = info.version,
@@ -1355,7 +1343,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	}
 	if features_applied == {} {
 		return policy_result_error(
-			.Unsupported_Feature,
+			.Not_Enforced,
 			Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
 			abi_requested = abi,
 			abi_used = info.version,
@@ -1402,7 +1390,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	if alloc_err != nil {
 		close_ruleset_fd(ruleset_fd)
 		return policy_result_error(
-			.Unavailable,
+			.Not_Enforced,
 			policy_error_allocation(alloc_err),
 			abi_requested = abi,
 			abi_used = info.version,
@@ -1438,7 +1426,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			close_opened_path_fds(opened[:])
 			close_ruleset_fd(ruleset_fd)
 			return policy_result_error(
-				.Unavailable,
+				.Not_Enforced,
 				policy_error_allocation(alloc_err),
 				abi_requested = abi,
 				abi_used = info.version,

@@ -95,7 +95,7 @@ test_abi1_omits_v8_v9_features :: proc(t: ^testing.T) {
 @(test)
 test_unavailable_syscall_preserves_errno :: proc(t: ^testing.T) {
 	result := policy_result_unavailable(38)
-	testing.expect_value(t, result.status, Policy_Status.Unavailable)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Unavailable)
 	testing.expect_value(t, result.error.cause, Policy_Error_Cause.ABI_Probe)
 	testing.expect_value(t, result.error.raw_errno, i32(38))
@@ -104,7 +104,7 @@ test_unavailable_syscall_preserves_errno :: proc(t: ^testing.T) {
 @(test)
 test_disabled_kernel_preserves_errno :: proc(t: ^testing.T) {
 	result := policy_result_disabled(95)
-	testing.expect_value(t, result.status, Policy_Status.Disabled)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Disabled)
 	testing.expect_value(t, result.error.raw_errno, i32(95))
 }
@@ -112,7 +112,7 @@ test_disabled_kernel_preserves_errno :: proc(t: ^testing.T) {
 @(test)
 test_unsupported_platform_is_typed :: proc(t: ^testing.T) {
 	result := policy_result_unsupported_platform()
-	testing.expect_value(t, result.status, Policy_Status.Unsupported_Platform)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Unsupported_Platform)
 	testing.expect_value(t, result.error.cause, Policy_Error_Cause.Unsupported_Platform)
 }
@@ -128,8 +128,8 @@ test_unsupported_feature_is_omitted :: proc(t: ^testing.T) {
 @(test)
 test_invalid_policy_reports_structured_error :: proc(t: ^testing.T) {
 	result := policy_result_invalid_policy()
-	testing.expect_value(t, result.status, Policy_Status.Invalid_Policy)
-	testing.expect(t, result.status != .Skipped_For_Test, "invalid policy must not be reported as a test skip")
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
+	testing.expect(t, result.error.kind != .Skipped_For_Test, "invalid policy must not be reported as a test skip")
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Invalid_Policy)
 	testing.expect_value(t, result.error.cause, Policy_Error_Cause.Validation)
 }
@@ -169,7 +169,7 @@ test_generic_syscall_failure_preserves_errno :: proc(t: ^testing.T) {
 @(test)
 test_skipped_for_test_is_typed :: proc(t: ^testing.T) {
 	result := policy_result_skipped_for_test()
-	testing.expect_value(t, result.status, Policy_Status.Skipped_For_Test)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Skipped_For_Test)
 	testing.expect(t, result.error.kind != .Invalid_Policy, "test skip must remain distinct from invalid policy")
 }
@@ -432,7 +432,7 @@ test_missing_path_default_and_ignore_option :: proc(t: ^testing.T) {
 	saved_ops := use_fake_apply_ops()
 	defer apply_ops = saved_ops
 	result := apply_best_effort(&policy)
-	testing.expect_value(t, result.status, Policy_Status.Unsupported_Feature)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect(t, .Filesystem in result.features_omitted, "missing ignored path should be reported as omitted")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 }
@@ -750,13 +750,13 @@ expect_fake_order :: proc(t: ^testing.T, expected: []Fake_Call_Kind) {
 @(test)
 test_apply_validate_invalid_policies :: proc(t: ^testing.T) {
 	result := apply_strict(nil)
-	testing.expect_value(t, result.status, Policy_Status.Invalid_Policy)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Invalid_Policy)
 	testing.expect_value(t, result.error.validation, Policy_Validation_Failure.Empty_Policy)
 
 	policy: Policy
 	result = apply_strict(&policy)
-	testing.expect_value(t, result.status, Policy_Status.Invalid_Policy)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Invalid_Policy)
 	testing.expect_value(t, result.error.validation, Policy_Validation_Failure.Empty_Policy)
 
@@ -764,7 +764,7 @@ test_apply_validate_invalid_policies :: proc(t: ^testing.T) {
 	defer cleanup(&policy)
 
 	result = apply_best_effort(&policy)
-	testing.expect_value(t, result.status, Policy_Status.Invalid_Policy)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Invalid_Policy)
 	testing.expect_value(t, result.error.validation, Policy_Validation_Failure.Empty_Policy)
 }
@@ -824,7 +824,7 @@ test_apply_probe_enosys_is_unavailable :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
 	result := apply_strict(&policy)
-	testing.expect_value(t, result.status, Policy_Status.Unavailable)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Unavailable)
 	testing.expect_value(t, result.error.raw_errno, i32(38))
 	testing.expect_value(t, fake_state.call_count, 1)
@@ -842,7 +842,7 @@ test_apply_probe_eopnotsupp_is_disabled :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
 	result := apply_strict(&policy)
-	testing.expect_value(t, result.status, Policy_Status.Disabled)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Disabled)
 	testing.expect_value(t, result.error.raw_errno, i32(95))
 }
@@ -856,7 +856,7 @@ test_non_linux_apply_reports_unsupported_platform :: proc(t: ^testing.T) {
 		expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
 		result := apply_best_effort(&policy)
-		testing.expect_value(t, result.status, Policy_Status.Unsupported_Platform)
+		testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 		testing.expect_value(t, result.error.kind, Policy_Error_Kind.Unsupported_Platform)
 		testing.expect_value(t, result.abi_requested, 0)
 		testing.expect_value(t, result.abi_used, 0)
@@ -881,7 +881,7 @@ test_best_effort_enosys_reports_unavailable :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_tcp_connect(&policy, 443), "allow_tcp_connect")
 
 	result := apply_best_effort(&policy)
-	testing.expect_value(t, result.status, Policy_Status.Unavailable)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect(t, result.status != .Enforced, "no Landlock syscall must not be reported as enforced")
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Unavailable)
 	testing.expect_value(t, result.error.cause, Policy_Error_Cause.ABI_Probe)
@@ -893,7 +893,7 @@ test_best_effort_enosys_reports_unavailable :: proc(t: ^testing.T) {
 	summary, err := debug_summary(result)
 	testing.expect_value(t, err.kind, Policy_Error_Kind.None)
 	defer delete(summary)
-	expect_debug_contains(t, summary, "status=Unavailable")
+	expect_debug_contains(t, summary, "error_kind=Unavailable")
 	expect_debug_contains(t, summary, "abi_requested=9")
 	expect_debug_contains(t, summary, "abi_used=0")
 	expect_debug_contains(t, summary, "requested=[Filesystem,Network]")
@@ -916,7 +916,7 @@ test_best_effort_eopnotsupp_reports_disabled :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
 	result := apply_best_effort(&policy)
-	testing.expect_value(t, result.status, Policy_Status.Disabled)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect(t, result.status != .Enforced, "disabled Landlock must not be reported as enforced")
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Disabled)
 	testing.expect_value(t, result.error.raw_errno, i32(95))
@@ -926,7 +926,7 @@ test_best_effort_eopnotsupp_reports_disabled :: proc(t: ^testing.T) {
 	summary, err := debug_summary(result)
 	testing.expect_value(t, err.kind, Policy_Error_Kind.None)
 	defer delete(summary)
-	expect_debug_contains(t, summary, "status=Disabled")
+	expect_debug_contains(t, summary, "error_kind=Disabled")
 	expect_debug_contains(t, summary, "error_kind=Disabled")
 	expect_debug_contains(t, summary, "raw_errno=95")
 	expect_debug_contains(t, summary, "omitted=[Filesystem]")
@@ -1039,7 +1039,7 @@ test_best_effort_omits_unsupported_feature_but_applies_supported_rules :: proc(t
 	expect_policy_ok(t, allow_tcp_bind(&policy, 0), "allow_tcp_bind")
 
 	strict_result := apply_strict(&policy)
-	testing.expect_value(t, strict_result.status, Policy_Status.Unsupported_Feature)
+	testing.expect_value(t, strict_result.status, Policy_Status.Not_Enforced)
 	testing.expect(t, .Network in strict_result.features_omitted, "strict apply should report unsupported network")
 
 	fake_reset()
@@ -1142,7 +1142,7 @@ test_best_effort_omitted_only_policy_is_not_enforced :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_path(&policy, .File, missing_path, path_access_ro_file, Path_Options{missing = .Ignore}), "allow missing ignore")
 
 	result := apply_best_effort(&policy)
-	testing.expect_value(t, result.status, Policy_Status.Unsupported_Feature)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect(t, result.status != .Enforced, "omitted-only policy must not be reported as enforced")
 	testing.expect_value(t, result.features_applied, Feature_Set{})
 	testing.expect(t, .Filesystem in result.features_omitted, "omitted-only filesystem intent should be visible")
@@ -1155,7 +1155,7 @@ test_debug_summary_unsupported_platform_path :: proc(t: ^testing.T) {
 	summary, err := debug_summary(result)
 	testing.expect_value(t, err.kind, Policy_Error_Kind.None)
 	defer delete(summary)
-	expect_debug_contains(t, summary, "status=Unsupported_Platform")
+	expect_debug_contains(t, summary, "error_kind=Unsupported_Platform")
 	expect_debug_contains(t, summary, "error_kind=Unsupported_Platform")
 	expect_debug_contains(t, summary, "error_cause=Unsupported_Platform")
 	expect_debug_contains(t, summary, "applied=[]")
@@ -1176,7 +1176,7 @@ test_network_options_abi3_vs_abi4 :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_tcp_connect(&policy, 443), "allow_tcp_connect")
 
 	strict_result := apply_strict(&policy)
-	testing.expect_value(t, strict_result.status, Policy_Status.Unsupported_Feature)
+	testing.expect_value(t, strict_result.status, Policy_Status.Not_Enforced)
 	testing.expect(t, .Network in strict_result.features_omitted, "abi v3 strict apply should omit network")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 	testing.expect_value(t, count_fake_calls(.Add_Net), 0)
@@ -1207,7 +1207,7 @@ test_scope_options_abi5_vs_abi6 :: proc(t: ^testing.T) {
 	expect_policy_ok(t, scope_abstract_unix_socket(&policy), "scope_abstract_unix_socket")
 
 	strict_result := apply_strict(&policy)
-	testing.expect_value(t, strict_result.status, Policy_Status.Unsupported_Feature)
+	testing.expect_value(t, strict_result.status, Policy_Status.Not_Enforced)
 	testing.expect(t, .Scope in strict_result.features_omitted, "abi v5 strict apply should omit scope")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 
@@ -1284,7 +1284,7 @@ test_thread_sync_abi7_vs_abi8 :: proc(t: ^testing.T) {
 	expect_policy_ok(t, enable_thread_sync(&policy), "enable_thread_sync")
 
 	strict_result := apply_strict(&policy)
-	testing.expect_value(t, strict_result.status, Policy_Status.Unsupported_Feature)
+	testing.expect_value(t, strict_result.status, Policy_Status.Not_Enforced)
 	testing.expect(t, .Thread_Sync in strict_result.features_omitted, "abi v7 strict apply should report omitted TSYNC")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 
@@ -1457,7 +1457,7 @@ test_rule_for_unhandled_feature_rejected :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_tcp_bind(&policy, 80), "allow_tcp_bind")
 
 	strict := apply_strict(&policy)
-	testing.expect_value(t, strict.status, Policy_Status.Invalid_Policy)
+	testing.expect_value(t, strict.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, strict.error.validation, Policy_Validation_Failure.Rule_For_Unhandled_Feature)
 	testing.expect(t, .Filesystem in strict.features_omitted, "offending unhandled dimension named in features_omitted")
 	testing.expect(t, !(.Network in strict.features_omitted), "handled dimension is not flagged")
@@ -1465,7 +1465,7 @@ test_rule_for_unhandled_feature_rejected :: proc(t: ^testing.T) {
 
 	fake_reset()
 	best := apply_best_effort(&policy)
-	testing.expect_value(t, best.status, Policy_Status.Invalid_Policy)
+	testing.expect_value(t, best.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, best.error.validation, Policy_Validation_Failure.Rule_For_Unhandled_Feature)
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 }
@@ -1505,7 +1505,7 @@ test_empty_handled_set_is_invalid_policy :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/usr"), "allow_ro_dirs")
 
 	result := apply_strict(&policy)
-	testing.expect_value(t, result.status, Policy_Status.Invalid_Policy)
+	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
 	testing.expect_value(t, result.error.validation, Policy_Validation_Failure.Empty_Handled_Set)
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 }
@@ -1514,7 +1514,7 @@ test_empty_handled_set_is_invalid_policy :: proc(t: ^testing.T) {
 test_is_enforced_helper :: proc(t: ^testing.T) {
 	testing.expect(t, is_enforced(Policy_Result{status = .Enforced}), "Enforced is enforced")
 	testing.expect(t, !is_enforced(Policy_Result{status = .Partially_Enforced}), "Partial is not enforced")
-	testing.expect(t, !is_enforced(Policy_Result{status = .Unavailable}), "Unavailable is not enforced")
+	testing.expect(t, !is_enforced(Policy_Result{status = .Not_Enforced}), "Not_Enforced is not enforced")
 }
 
 @(test)

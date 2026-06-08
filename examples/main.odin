@@ -91,6 +91,8 @@ main :: proc() {
 		fmt.println(summary)
 	}
 
+	// Status is the coarse outcome; the reason for a Not_Enforced result lives in
+	// result.error.kind.
 	#partial switch result.status {
 	case .Enforced:
 		fmt.printfln("sandboxed via Landlock ABI v%d", result.abi_used)
@@ -100,15 +102,24 @@ main :: proc() {
 			result.abi_used,
 			result.features_omitted,
 		)
-	case .Unavailable, .Disabled, .Unsupported_Platform:
-		// Kernel has no/disabled Landlock.
-		// fail immediately or continue unsandboxed.
-		fmt.eprintln("landlock lsm not reachable:", landlock.enum_to_string(result.status))
-	case .Invalid_Policy:
-		fmt.eprintln("invalid landlock policy:", landlock.enum_to_string(result.error.validation))
-		os.exit(1)
-	case .Skipped_For_Test:
-	// Only produced by the test cases; not reachable in normal use.
+	case .Not_Enforced:
+		#partial switch result.error.kind {
+		case .Unavailable, .Disabled, .Unsupported_Platform:
+			// Kernel has no/disabled Landlock.
+			// fail immediately or continue unsandboxed.
+			fmt.eprintln(
+				"landlock lsm not reachable:",
+				landlock.enum_to_string(result.error.kind),
+			)
+		case .Invalid_Policy:
+			fmt.eprintln(
+				"invalid landlock policy:",
+				landlock.enum_to_string(result.error.validation),
+			)
+			os.exit(1)
+		case:
+			fmt.eprintln("landlock not enforced:", landlock.enum_to_string(result.error.kind))
+		}
 	}
 
 	// Proof of restriction: when enforced, this read is denied
