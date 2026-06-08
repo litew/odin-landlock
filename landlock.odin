@@ -41,6 +41,7 @@ import "core:strings"
 import "core:sys/posix"
 import "syscall"
 
+@(private)
 ABI_Version :: struct {
 	version:              int,
 	supported_access_fs:  syscall.Access_FS_Flags,
@@ -49,11 +50,13 @@ ABI_Version :: struct {
 	supported_restrict:   syscall.Restrict_Self_Flags,
 }
 
+@(private)
 ABI_Error :: enum int {
 	Not_Supported = -1,
 	None          = 0,
 }
 
+@(private)
 ABI_FS_V1 :: syscall.Access_FS_Flags {
 	.Execute,
 	.Write_File,
@@ -69,17 +72,25 @@ ABI_FS_V1 :: syscall.Access_FS_Flags {
 	.Make_Block,
 	.Make_Sym,
 }
+@(private)
 ABI_FS_V2 :: ABI_FS_V1 + syscall.Access_FS_Flags{.Refer}
+@(private)
 ABI_FS_V3 :: ABI_FS_V2 + syscall.Access_FS_Flags{.Truncate}
+@(private)
 ABI_NET_V4 :: syscall.Access_Net_Flags{.Bind_TCP, .Connect_TCP}
+@(private)
 ABI_FS_V5 :: ABI_FS_V3 + syscall.Access_FS_Flags{.Ioctl_Dev}
+@(private)
 ABI_SCOPE_V6 :: syscall.Scope_Flags{.Abstract_Unix_Socket, .Signal}
+@(private)
 ABI_RESTRICT_V7 :: syscall.Restrict_Self_Flags {
 	.Log_Same_Exec_Off,
 	.Log_New_Exec_On,
 	.Log_Subdomains_Off,
 }
+@(private)
 ABI_RESTRICT_V8 :: ABI_RESTRICT_V7 + syscall.Restrict_Self_Flags{.Tsync}
+@(private)
 ABI_FS_V9 :: ABI_FS_V5 + syscall.Access_FS_Flags{.Resolve_Unix}
 
 // ABI_FS_ALL is every filesystem right the library knows. It is the complement
@@ -87,6 +98,7 @@ ABI_FS_V9 :: ABI_FS_V5 + syscall.Access_FS_Flags{.Resolve_Unix}
 // is exactly all enum members and auto-tracks new rights at compile time,
 // without chasing the latest ABI_FS_V*. Used to validate masks (reject unknown
 // bits), not for kernel-ABI gating.
+@(private)
 ABI_FS_ALL :: ~syscall.Access_FS_Flags{}
 
 // Drift tripwire: the hand-maintained cumulative chain (ABI_FS_V9) must cover
@@ -94,6 +106,7 @@ ABI_FS_ALL :: ~syscall.Access_FS_Flags{}
 // is added but not threaded into the ABI_FS_V* chain, this fails to compile.
 #assert(ABI_FS_V9 == ABI_FS_ALL)
 
+@(private)
 abi_versions := [10]ABI_Version {
 	{version = 0},
 	{version = 1, supported_access_fs = ABI_FS_V1},
@@ -201,6 +214,7 @@ Policy :: struct {
 // Only the three access dimensions are meaningful here; logging/thread-sync
 // remain opt-in flags. Individual FS rights (incl. Resolve_Unix) are part of
 // .Filesystem.
+@(private)
 HANDLED_DEFAULT :: Feature_Set{.Filesystem, .Network, .Scope}
 
 path_access_ro_dir :: Path_Access{.Execute, .Read_File, .Read_Dir}
@@ -306,10 +320,12 @@ Policy_Result :: struct {
 	error:              Policy_Error,
 }
 
+@(private)
 policy_error_none :: proc "contextless" () -> Policy_Error {
 	return Policy_Error{kind = .None}
 }
 
+@(private)
 policy_error_errno :: proc "contextless" (
 	kind: Policy_Error_Kind,
 	cause: Policy_Error_Cause,
@@ -318,6 +334,7 @@ policy_error_errno :: proc "contextless" (
 	return Policy_Error{kind = kind, cause = cause, raw_errno = raw_errno}
 }
 
+@(private)
 policy_error_allocation :: proc "contextless" (
 	allocator_error: mem.Allocator_Error,
 ) -> Policy_Error {
@@ -328,6 +345,7 @@ policy_error_allocation :: proc "contextless" (
 	}
 }
 
+@(private)
 policy_result_error :: proc "contextless" (
 	status: Policy_Status,
 	error: Policy_Error,
@@ -356,6 +374,7 @@ is_enforced :: proc "contextless" (result: Policy_Result) -> bool {
 	return result.status == .Enforced
 }
 
+@(private)
 policy_summary_text :: proc "contextless" (result: Policy_Result) -> string {
 	switch result.status {
 	case .Enforced:
@@ -404,6 +423,7 @@ enum_to_string :: proc(value: $T) -> string where intrinsics.type_is_enum(T) {
 
 // write_feature_set renders a Feature_Set as [Name,Name] in enum declaration
 // order.
+@(private)
 write_feature_set :: proc(builder: ^strings.Builder, features: Feature_Set) {
 	strings.write_byte(builder, '[')
 	first := true
@@ -426,6 +446,7 @@ write_feature_set :: proc(builder: ^strings.Builder, features: Feature_Set) {
 // needs to grow the builder and cannot fail mid-write. If the output ever
 // reaches the cap, the summary is treated as failed rather than returned
 // truncated (a truncated security summary would be misleading).
+@(private)
 DEBUG_SUMMARY_CAP :: 1024
 
 // debug_summary returns an allocated, caller-owned status line. Free it
@@ -476,6 +497,7 @@ debug_summary :: proc(
 	return summary, policy_error_none()
 }
 
+@(private)
 policy_result_unavailable :: proc "contextless" (raw_errno: i32) -> Policy_Result {
 	return policy_result_error(
 		.Unavailable,
@@ -483,10 +505,12 @@ policy_result_unavailable :: proc "contextless" (raw_errno: i32) -> Policy_Resul
 	)
 }
 
+@(private)
 policy_result_disabled :: proc "contextless" (raw_errno: i32) -> Policy_Result {
 	return policy_result_error(.Disabled, policy_error_errno(.Disabled, .ABI_Probe, raw_errno))
 }
 
+@(private)
 policy_result_unsupported_platform :: proc "contextless" () -> Policy_Result {
 	return policy_result_error(
 		.Unsupported_Platform,
@@ -494,6 +518,7 @@ policy_result_unsupported_platform :: proc "contextless" () -> Policy_Result {
 	)
 }
 
+@(private)
 policy_result_unsupported_feature :: proc "contextless" (feature: Feature) -> Policy_Result {
 	return policy_result_error(
 		.Partially_Enforced,
@@ -502,12 +527,14 @@ policy_result_unsupported_feature :: proc "contextless" (feature: Feature) -> Po
 	)
 }
 
+@(private)
 policy_result_invalid_policy :: proc "contextless" (
 	validation: Policy_Validation_Failure = .None,
 ) -> Policy_Result {
 	return policy_result_error(.Invalid_Policy, policy_error_invalid_policy(validation))
 }
 
+@(private)
 policy_result_permission_denied_for :: proc "contextless" (
 	cause: Policy_Error_Cause,
 	raw_errno: i32,
@@ -518,6 +545,7 @@ policy_result_permission_denied_for :: proc "contextless" (
 	)
 }
 
+@(private)
 policy_result_no_new_privs_failed :: proc "contextless" (raw_errno: i32) -> Policy_Result {
 	return policy_result_error(
 		.Unavailable,
@@ -525,6 +553,7 @@ policy_result_no_new_privs_failed :: proc "contextless" (raw_errno: i32) -> Poli
 	)
 }
 
+@(private)
 policy_result_syscall_failed :: proc "contextless" (
 	cause: Policy_Error_Cause,
 	raw_errno: i32,
@@ -532,6 +561,7 @@ policy_result_syscall_failed :: proc "contextless" (
 	return policy_result_error(.Unavailable, policy_error_errno(.Syscall_Failed, cause, raw_errno))
 }
 
+@(private)
 policy_result_skipped_for_test :: proc "contextless" () -> Policy_Result {
 	return policy_result_error(
 		.Skipped_For_Test,
@@ -539,12 +569,14 @@ policy_result_skipped_for_test :: proc "contextless" () -> Policy_Result {
 	)
 }
 
+@(private)
 policy_error_invalid_policy :: proc "contextless" (
 	validation: Policy_Validation_Failure = .None,
 ) -> Policy_Error {
 	return Policy_Error{kind = .Invalid_Policy, cause = .Validation, validation = validation}
 }
 
+@(private)
 policy_error_unsupported_builder_feature :: proc "contextless" (
 	validation: Policy_Validation_Failure = .None,
 ) -> Policy_Error {
@@ -555,10 +587,12 @@ policy_error_unsupported_builder_feature :: proc "contextless" (
 	}
 }
 
+@(private)
 policy_is_ready :: proc "contextless" (policy: ^Policy) -> bool {
 	return policy != nil && policy.initialized
 }
 
+@(private)
 path_access_to_syscall :: proc "contextless" (access: Path_Access) -> syscall.Access_FS_Flags {
 	return transmute(syscall.Access_FS_Flags)access
 }
@@ -568,14 +602,17 @@ path_access_to_syscall :: proc "contextless" (access: Path_Access) -> syscall.Ac
 // has none of those bits set, every requested right is recognized. This is a
 // static validity check (rejects garbage/unknown bits), not a kernel/ABI support
 // check — the running kernel's ABI is applied later via abi_versions.
+@(private)
 path_access_is_valid :: proc "contextless" (access: Path_Access) -> bool {
 	return (transmute(u64)path_access_to_syscall(access) & ~transmute(u64)ABI_FS_ALL) == 0
 }
 
+@(private)
 path_access_is_writable_without_truncate :: proc "contextless" (access: Path_Access) -> bool {
 	return .Write_File in access && !(.Truncate in access)
 }
 
+@(private)
 path_access_validate :: proc "contextless" (access: Path_Access) -> Policy_Error {
 	if access == {} {
 		return policy_error_invalid_policy(.Empty_Access)
@@ -589,6 +626,7 @@ path_access_validate :: proc "contextless" (access: Path_Access) -> Policy_Error
 	return policy_error_none()
 }
 
+@(private)
 path_kind_matches_file_type :: proc "contextless" (
 	kind: Path_Kind,
 	file_type: os.File_Type,
@@ -602,6 +640,7 @@ path_kind_matches_file_type :: proc "contextless" (
 	return false
 }
 
+@(private)
 path_validation_stat :: proc(
 	path: string,
 	kind: Path_Kind,
@@ -648,6 +687,7 @@ path_validation_stat :: proc(
 	return false, policy_error_none()
 }
 
+@(private)
 policy_note_path_features :: proc(policy: ^Policy, access: Path_Access) {
 	policy.features_requested += Feature_Set{.Filesystem}
 }
@@ -731,6 +771,7 @@ cleanup :: proc(policy: ^Policy) {
 	policy^ = {}
 }
 
+@(private)
 record_omitted_path :: proc(
 	policy: ^Policy,
 	kind: Path_Kind,
@@ -951,6 +992,7 @@ enable_thread_sync :: proc(policy: ^Policy) -> Policy_Error {
 	return policy_error_none()
 }
 
+@(private)
 policy_is_empty :: proc "contextless" (policy: ^Policy) -> bool {
 	return(
 		policy.features_requested == {} &&
@@ -962,12 +1004,14 @@ policy_is_empty :: proc "contextless" (policy: ^Policy) -> bool {
 	)
 }
 
+@(private)
 Apply_Path_FD :: struct {
 	rule_index: int,
 	fd:         int,
 	access:     syscall.Access_FS_Flags,
 }
 
+@(private)
 Apply_Ops :: struct {
 	probe_abi:      proc() -> (int, i32),
 	create_ruleset: proc(attr: ^syscall.Ruleset_Attr) -> (int, i32),
@@ -979,6 +1023,7 @@ Apply_Ops :: struct {
 	close_fd:       proc(fd: int) -> i32,
 }
 
+@(private)
 raw_errno_from_os_error :: proc(err: os.Error) -> i32 {
 	if err == nil {
 		return 0
@@ -989,21 +1034,25 @@ raw_errno_from_os_error :: proc(err: os.Error) -> i32 {
 	return 0
 }
 
+@(private)
 apply_probe_abi :: proc() -> (int, i32) {
 	abi, err := syscall.get_abi_version()
 	return abi, raw_errno_from_os_error(err)
 }
 
+@(private)
 apply_create_ruleset :: proc(attr: ^syscall.Ruleset_Attr) -> (int, i32) {
 	fd, err := syscall.create_ruleset(attr)
 	return fd, raw_errno_from_os_error(err)
 }
 
+@(private)
 apply_open_path :: proc(path: string, kind: Path_Kind, no_follow: bool) -> (int, i32) {
 	fd, err := syscall.open_path(path, no_follow)
 	return fd, raw_errno_from_os_error(err)
 }
 
+@(private)
 apply_add_path_rule :: proc(
 	ruleset_fd: int,
 	path_fd: int,
@@ -1013,26 +1062,31 @@ apply_add_path_rule :: proc(
 	return raw_errno_from_os_error(syscall.add_path_beneath_rule(ruleset_fd, &attr, 0))
 }
 
+@(private)
 apply_add_net_rule :: proc(ruleset_fd: int, access: syscall.Access_Net_Flags, port: u16) -> i32 {
 	attr := syscall.net_port_attr(access, port)
 	return raw_errno_from_os_error(syscall.add_net_port_rule(ruleset_fd, &attr, 0))
 }
 
+@(private)
 apply_prctl :: proc(option: int, arg2, arg3, arg4, arg5: uintptr) -> i32 {
 	return raw_errno_from_os_error(syscall.prctl(option, arg2, arg3, arg4, arg5))
 }
 
+@(private)
 apply_restrict :: proc(ruleset_fd: int, flags: syscall.Restrict_Self_Flags) -> i32 {
 	return raw_errno_from_os_error(syscall.restrict_self(ruleset_fd, int(transmute(u64)flags)))
 }
 
+@(private)
 apply_close_fd :: proc(fd: int) -> i32 {
 	return raw_errno_from_os_error(syscall.close_fd(fd))
 }
 
-@(thread_local)
+@(private, thread_local)
 apply_ops: Apply_Ops
 
+@(private)
 default_apply_ops :: proc "contextless" () -> Apply_Ops {
 	return Apply_Ops {
 		probe_abi = apply_probe_abi,
@@ -1046,6 +1100,7 @@ default_apply_ops :: proc "contextless" () -> Apply_Ops {
 	}
 }
 
+@(private)
 active_apply_ops :: proc "contextless" () -> Apply_Ops {
 	if apply_ops.probe_abi == nil {
 		return default_apply_ops()
@@ -1053,6 +1108,7 @@ active_apply_ops :: proc "contextless" () -> Apply_Ops {
 	return apply_ops
 }
 
+@(private)
 apply_result_for_errno :: proc "contextless" (
 	cause: Policy_Error_Cause,
 	raw_errno: i32,
@@ -1071,6 +1127,7 @@ apply_result_for_errno :: proc "contextless" (
 	return policy_result_syscall_failed(cause, raw_errno)
 }
 
+@(private)
 requested_feature_support :: proc "contextless" (
 	policy: ^Policy,
 	info: ABI_Version,
@@ -1157,6 +1214,7 @@ requested_feature_support :: proc "contextless" (
 // ABI supports. Logging/Thread_Sync are opt-in restrict_self flags (not part of
 // the handled knob), so they are reported only when the caller enabled them
 // (present in requested) AND the running ABI supports them.
+@(private)
 handled_features_for_abi :: proc "contextless" (
 	info: ABI_Version,
 	handled: Feature_Set,
@@ -1181,6 +1239,7 @@ handled_features_for_abi :: proc "contextless" (
 	return features
 }
 
+@(private)
 policy_result_with_context :: proc "contextless" (
 	result: Policy_Result,
 	abi_requested: int,
@@ -1200,6 +1259,7 @@ policy_result_with_context :: proc "contextless" (
 	return updated
 }
 
+@(private)
 close_opened_path_fds :: proc(opened: []Apply_Path_FD) {
 	ops := active_apply_ops()
 	for item in opened {
@@ -1209,6 +1269,7 @@ close_opened_path_fds :: proc(opened: []Apply_Path_FD) {
 	}
 }
 
+@(private)
 close_ruleset_fd :: proc(ruleset_fd: int) {
 	if ruleset_fd >= 0 {
 		ops := active_apply_ops()
@@ -1216,6 +1277,7 @@ close_ruleset_fd :: proc(ruleset_fd: int) {
 	}
 }
 
+@(private)
 apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	if !policy_is_ready(policy) || policy_is_empty(policy) {
 		return policy_result_invalid_policy(.Empty_Policy)
@@ -1476,6 +1538,7 @@ apply_best_effort :: proc(policy: ^Policy) -> Policy_Result {
 	return apply_with_mode(policy, true)
 }
 
+@(private)
 abi_info_for_version :: proc "contextless" (version: int) -> (ABI_Version, ABI_Error) {
 	if version <= 0 {
 		return abi_versions[0], ABI_Error.Not_Supported
