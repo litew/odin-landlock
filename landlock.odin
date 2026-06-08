@@ -375,7 +375,7 @@ is_enforced :: proc "contextless" (result: Policy_Result) -> bool {
 }
 
 @(private)
-policy_summary_text :: proc "contextless" (result: Policy_Result) -> string {
+summary_text :: proc "contextless" (result: Policy_Result) -> string {
 	switch result.status {
 	case .Enforced:
 		return "landlock enforced"
@@ -407,7 +407,7 @@ summary :: proc(
 	err: Policy_Error,
 ) {
 	alloc_err: mem.Allocator_Error
-	summary, alloc_err = strings.clone(policy_summary_text(result), allocator)
+	summary, alloc_err = strings.clone(summary_text(result), allocator)
 	if alloc_err != nil {
 		return "", policy_error_allocation(alloc_err)
 	}
@@ -588,7 +588,7 @@ policy_error_unsupported_builder_feature :: proc "contextless" (
 }
 
 @(private)
-policy_is_ready :: proc "contextless" (policy: ^Policy) -> bool {
+is_ready :: proc "contextless" (policy: ^Policy) -> bool {
 	return policy != nil && policy.initialized
 }
 
@@ -735,7 +735,7 @@ init :: proc(policy: ^Policy, allocator := context.allocator) -> Policy_Error {
 // is rejected with Invalid_Policy (.Non_Supported_Feature) rather than silently
 // ignored.
 handle_features :: proc(policy: ^Policy, dimensions: Feature_Set) -> Policy_Error {
-	if !policy_is_ready(policy) {
+	if !is_ready(policy) {
 		return policy_error_invalid_policy(.Policy_Not_Initialized)
 	}
 	if dimensions - HANDLED_DEFAULT != {} {
@@ -814,7 +814,7 @@ allow_path :: proc(
 	access: Path_Access,
 	options := Path_Options{},
 ) -> Policy_Error {
-	if !policy_is_ready(policy) {
+	if !is_ready(policy) {
 		return policy_error_invalid_policy(.Policy_Not_Initialized)
 	}
 	if path == "" {
@@ -909,7 +909,7 @@ allow_rw_files :: proc(policy: ^Policy, paths: ..string) -> Policy_Error {
 }
 
 allow_tcp_connect :: proc(policy: ^Policy, port: u16) -> Policy_Error {
-	if !policy_is_ready(policy) {
+	if !is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
 	_, alloc_err := append(
@@ -924,7 +924,7 @@ allow_tcp_connect :: proc(policy: ^Policy, port: u16) -> Policy_Error {
 }
 
 allow_tcp_bind :: proc(policy: ^Policy, port: u16) -> Policy_Error {
-	if !policy_is_ready(policy) {
+	if !is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
 	_, alloc_err := append(
@@ -939,7 +939,7 @@ allow_tcp_bind :: proc(policy: ^Policy, port: u16) -> Policy_Error {
 }
 
 scope_signal :: proc(policy: ^Policy) -> Policy_Error {
-	if !policy_is_ready(policy) {
+	if !is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
 	policy.rules_scoped += syscall.Scope_Flags{.Signal}
@@ -948,7 +948,7 @@ scope_signal :: proc(policy: ^Policy) -> Policy_Error {
 }
 
 scope_abstract_unix :: proc(policy: ^Policy) -> Policy_Error {
-	if !policy_is_ready(policy) {
+	if !is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
 	policy.rules_scoped += syscall.Scope_Flags{.Abstract_Unix_Socket}
@@ -957,7 +957,7 @@ scope_abstract_unix :: proc(policy: ^Policy) -> Policy_Error {
 }
 
 enable_log_new_exec :: proc(policy: ^Policy) -> Policy_Error {
-	if !policy_is_ready(policy) {
+	if !is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
 	policy.flags_restricted += syscall.Restrict_Self_Flags{.Log_New_Exec_On}
@@ -966,7 +966,7 @@ enable_log_new_exec :: proc(policy: ^Policy) -> Policy_Error {
 }
 
 disable_log_same_exec :: proc(policy: ^Policy) -> Policy_Error {
-	if !policy_is_ready(policy) {
+	if !is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
 	policy.flags_restricted += syscall.Restrict_Self_Flags{.Log_Same_Exec_Off}
@@ -975,7 +975,7 @@ disable_log_same_exec :: proc(policy: ^Policy) -> Policy_Error {
 }
 
 disable_log_subdomains :: proc(policy: ^Policy) -> Policy_Error {
-	if !policy_is_ready(policy) {
+	if !is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
 	policy.flags_restricted += syscall.Restrict_Self_Flags{.Log_Subdomains_Off}
@@ -984,7 +984,7 @@ disable_log_subdomains :: proc(policy: ^Policy) -> Policy_Error {
 }
 
 enable_thread_sync :: proc(policy: ^Policy) -> Policy_Error {
-	if !policy_is_ready(policy) {
+	if !is_ready(policy) {
 		return policy_error_invalid_policy()
 	}
 	policy.flags_restricted += syscall.Restrict_Self_Flags{.Tsync}
@@ -993,7 +993,7 @@ enable_thread_sync :: proc(policy: ^Policy) -> Policy_Error {
 }
 
 @(private)
-policy_is_empty :: proc "contextless" (policy: ^Policy) -> bool {
+is_empty :: proc "contextless" (policy: ^Policy) -> bool {
 	return(
 		policy.features_requested == {} &&
 		len(policy.rules_path) == 0 &&
@@ -1005,7 +1005,7 @@ policy_is_empty :: proc "contextless" (policy: ^Policy) -> bool {
 }
 
 @(private)
-Apply_Path_FD :: struct {
+Apply_Path_Fd :: struct {
 	rule_index: int,
 	fd:         int,
 	access:     syscall.Access_FS_Flags,
@@ -1260,7 +1260,7 @@ policy_result_with_context :: proc "contextless" (
 }
 
 @(private)
-close_opened_path_fds :: proc(opened: []Apply_Path_FD) {
+close_opened_path_fds :: proc(opened: []Apply_Path_Fd) {
 	ops := active_apply_ops()
 	for item in opened {
 		if item.fd >= 0 {
@@ -1279,7 +1279,7 @@ close_ruleset_fd :: proc(ruleset_fd: int) {
 
 @(private)
 apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
-	if !policy_is_ready(policy) || policy_is_empty(policy) {
+	if !is_ready(policy) || is_empty(policy) {
 		return policy_result_invalid_policy(.Empty_Policy)
 	}
 	// An empty handled set would deny-by-default nothing: the kernel rejects an
@@ -1391,10 +1391,10 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 		)
 	}
 
-	opened: [dynamic]Apply_Path_FD
+	opened: [dynamic]Apply_Path_Fd
 	alloc_err: mem.Allocator_Error
 	opened, alloc_err = make(
-		[dynamic]Apply_Path_FD,
+		[dynamic]Apply_Path_Fd,
 		0,
 		len(policy.rules_path),
 		context.allocator,
@@ -1431,7 +1431,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 		}
 		_, alloc_err = append(
 			&opened,
-			Apply_Path_FD{rule_index = index, fd = path_fd, access = access},
+			Apply_Path_Fd{rule_index = index, fd = path_fd, access = access},
 		)
 		if alloc_err != nil {
 			ops.close_fd(path_fd)
