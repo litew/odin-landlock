@@ -45,26 +45,26 @@ create_ruleset :: proc(attr: ^Ruleset_Attr, flags: u32 = 0) -> (int, os.Error) {
 }
 
 // add_path_beneath_rule adds a rule of type "path beneath" to the given ruleset fd.
-add_path_beneath_rule :: proc(rulesetFd: int, attr: ^Path_Beneath_Attr, flags: int) -> os.Error {
-	return add_rule_to_ruleset(rulesetFd, Rule_Type.Path_Beneath, attr, flags)
+add_path_beneath_rule :: proc(ruleset_fd: int, attr: ^Path_Beneath_Attr, flags: int) -> os.Error {
+	return add_rule_to_ruleset(ruleset_fd, Rule_Type.Path_Beneath, attr, flags)
 }
 
 // add_net_port_rule adds a rule of type "net port" to the given ruleset FD.
-add_net_port_rule :: proc(rulesetFd: int, attr: ^Net_Port_Attr, flags: int) -> os.Error {
-	return add_rule_to_ruleset(rulesetFd, Rule_Type.Net_Port, attr, flags)
+add_net_port_rule :: proc(ruleset_fd: int, attr: ^Net_Port_Attr, flags: int) -> os.Error {
+	return add_rule_to_ruleset(ruleset_fd, Rule_Type.Net_Port, attr, flags)
 }
 
 add_rule_to_ruleset :: proc(
-	rulesetFd: int,
-	ruleType: Rule_Type,
-	ruleAttr: rawptr,
+	ruleset_fd: int,
+	rule_type: Rule_Type,
+	rule_attr: rawptr,
 	flags: int,
 ) -> os.Error {
 	ret := linux.syscall(
 		unix.SYS_landlock_add_rule,
-		uintptr(rulesetFd),
-		uintptr(ruleType),
-		rawptr(ruleAttr),
+		uintptr(ruleset_fd),
+		uintptr(rule_type),
+		rawptr(rule_attr),
 		uintptr(flags),
 		0,
 		0,
@@ -73,8 +73,8 @@ add_rule_to_ruleset :: proc(
 	return syscall_error(ret)
 }
 
-restrict_self :: proc(rulesetFd: int, flags: int) -> os.Error {
-	ret := linux.syscall(unix.SYS_landlock_restrict_self, uintptr(rulesetFd), uintptr(flags))
+restrict_self :: proc(ruleset_fd: int, flags: int) -> os.Error {
+	ret := linux.syscall(unix.SYS_landlock_restrict_self, uintptr(ruleset_fd), uintptr(flags))
 
 	return syscall_error(ret)
 }

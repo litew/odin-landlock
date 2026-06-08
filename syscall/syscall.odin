@@ -148,27 +148,27 @@ when ODIN_OS != .Linux {
 	}
 
 	add_path_beneath_rule :: proc(
-		rulesetFd: int,
+		ruleset_fd: int,
 		attr: ^Path_Beneath_Attr,
 		flags: int,
 	) -> os.Error {
 		return unsupported_platform_error()
 	}
 
-	add_net_port_rule :: proc(rulesetFd: int, attr: ^Net_Port_Attr, flags: int) -> os.Error {
+	add_net_port_rule :: proc(ruleset_fd: int, attr: ^Net_Port_Attr, flags: int) -> os.Error {
 		return unsupported_platform_error()
 	}
 
 	add_rule_to_ruleset :: proc(
-		rulesetFd: int,
-		ruleType: Rule_Type,
-		ruleAttr: rawptr,
+		ruleset_fd: int,
+		rule_type: Rule_Type,
+		rule_attr: rawptr,
 		flags: int,
 	) -> os.Error {
 		return unsupported_platform_error()
 	}
 
-	restrict_self :: proc(rulesetFd: int, flags: int) -> os.Error {
+	restrict_self :: proc(ruleset_fd: int, flags: int) -> os.Error {
 		return unsupported_platform_error()
 	}
 
