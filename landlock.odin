@@ -5,11 +5,13 @@
     applied, every access right the running kernel supports is denied unless an
     allow_* rule grants it. policy_init defaults the handled set to all three
     access dimensions (Filesystem, Network, Scope), best-effort to the kernel's
-    ABI; narrow it with policy_handle (e.g. {.Filesystem} for FS-only). Dimensions
-    left out of the handled set are not restricted. Logging and thread-sync are
-    opt-in flags, not part of the handled set.
+    ABI; narrow it with handle_features (e.g. {.Filesystem} for FS-only).
+    Dimensions left out of the handled set are not restricted. Logging and
+    thread-sync are opt-in landlock_restrict_self flags, not access dimensions;
+    request them with handle_flags (syscall.Restrict_Self_Flags) and read them
+    back from Policy_Result.flags_*.
 
-    Typical flow: init, then the allow/scope/enable builder procs, then
+    Typical flow: init, then the allow/scope builder procs (+ handle_flags), then
     apply_strict or apply_best_effort, inspect Policy_Result, then cleanup. apply_strict requires
     the full requested policy; apply_best_effort tolerates older kernels and
     reports the gap via Policy_Result (status, abi_used, features_applied/features_omitted). apply_strict
@@ -26,9 +28,10 @@
     The summary procs return caller-owned strings; free them with the allocator
     passed to the summary proc.
 
-    Feature is a coarse dimension-level view for reporting. Individual filesystem
-    rights (Refer, Truncate, Ioctl_Dev, Resolve_Unix, ...) are requested via
-    Path_Access and reported under .Filesystem.
+    Feature is a coarse access-dimension view for reporting (Filesystem, Network,
+    Scope). Individual filesystem rights (Refer, Truncate, Ioctl_Dev,
+    Resolve_Unix, ...) are requested via Path_Access and reported under
+    .Filesystem. Restrict_self flags are reported separately in flags_*.
 */
 package landlock
 
@@ -236,12 +239,14 @@ path_access_rw_dir ::
 path_access_ro_file :: Path_Access{.Execute, .Read_File}
 path_access_rw_file :: path_access_ro_file + Path_Access{.Write_File, .Truncate}
 
+// Feature is a coarse access *dimension* — the deny-by-default knobs of a
+// ruleset. Logging and thread-sync are NOT here: they are opt-in
+// landlock_restrict_self flags (syscall.Restrict_Self_Flags) configured via
+// handle_flags and reported in Policy_Result.flags_*.
 Feature :: enum {
 	Filesystem,
 	Network,
 	Scope,
-	Logging,
-	Thread_Sync,
 }
 Feature_Set :: bit_set[Feature;u64]
 
@@ -295,7 +300,6 @@ Policy_Validation_Failure :: enum {
 	Empty_Policy,
 	Empty_Handled_Set,
 	Rule_For_Unhandled_Feature,
-	Non_Supported_Feature,
 	Invalid_Path,
 }
 
@@ -315,6 +319,11 @@ Policy_Result :: struct {
 	features_requested: Feature_Set,
 	features_applied:   Feature_Set,
 	features_omitted:   Feature_Set,
+	// Restrict_self flags (logging control, thread-sync) are opt-in toggles, not
+	// deny-by-default dimensions, so they are reported separately from features_*.
+	flags_requested:    syscall.Restrict_Self_Flags,
+	flags_applied:      syscall.Restrict_Self_Flags,
+	flags_omitted:      syscall.Restrict_Self_Flags,
 	error:              Policy_Error,
 }
 
@@ -352,6 +361,8 @@ policy_result_error :: proc "contextless" (
 	features_handled: Feature_Set = {},
 	features_requested: Feature_Set = {},
 	features_omitted: Feature_Set = {},
+	flags_requested: syscall.Restrict_Self_Flags = {},
+	flags_omitted: syscall.Restrict_Self_Flags = {},
 ) -> Policy_Result {
 	return Policy_Result {
 		status = status,
@@ -360,6 +371,8 @@ policy_result_error :: proc "contextless" (
 		features_handled = features_handled,
 		features_requested = features_requested,
 		features_omitted = features_omitted,
+		flags_requested = flags_requested,
+		flags_omitted = flags_omitted,
 		error = error,
 	}
 }
@@ -465,6 +478,13 @@ debug_summary :: proc(
 	write_feature_set(&builder, result.features_applied)
 	fmt.sbprint(&builder, " omitted=")
 	write_feature_set(&builder, result.features_omitted)
+	fmt.sbprintf(
+		&builder,
+		" flags_requested=%w flags_applied=%w flags_omitted=%w",
+		result.flags_requested,
+		result.flags_applied,
+		result.flags_omitted,
+	)
 	fmt.sbprintf(
 		&builder,
 		" error_kind=%v error_cause=%v raw_errno=%d validation=%v",
@@ -717,19 +737,26 @@ init :: proc(policy: ^Policy, allocator := context.allocator) -> Policy_Error {
 // handle_features narrows the deny-by-default handled set to the given access
 // dimensions (.Filesystem/.Network/.Scope); other dimensions are left
 // unrestricted. By default init handles all three. Call e.g.
-// handle_features(&p, {.Filesystem}) for filesystem-only sandboxing. Only the
-// three access dimensions are valid here; Logging/Thread_Sync are opt-in flags
-// enabled via enable_*/disable_* and passing them (or any non-dimension feature)
-// is rejected with Invalid_Policy (.Non_Supported_Feature) rather than silently
-// ignored.
+// handle_features(&p, {.Filesystem}) for filesystem-only sandboxing.
 handle_features :: proc(policy: ^Policy, dimensions: Feature_Set) -> Policy_Error {
 	if !is_ready(policy) {
 		return policy_error_invalid_policy(.Policy_Not_Initialized)
 	}
-	if dimensions - HANDLED_DEFAULT != {} {
-		return policy_error_invalid_policy(.Non_Supported_Feature)
-	}
 	policy.features_handled = dimensions & HANDLED_DEFAULT
+	return policy_error_none()
+}
+
+// handle_flags sets the landlock_restrict_self flags to request: audit-logging
+// control (.Log_New_Exec_On / .Log_Same_Exec_Off / .Log_Subdomains_Off) and
+// thread-sync (.Tsync). Unlike the deny-by-default handled set these are opt-in
+// toggles, defaulting to none; this replaces (not ORs) the set. Flags the running
+// ABI does not support are dropped at apply and reported in
+// Policy_Result.flags_omitted (and fail apply_strict).
+handle_flags :: proc(policy: ^Policy, flags: syscall.Restrict_Self_Flags) -> Policy_Error {
+	if !is_ready(policy) {
+		return policy_error_invalid_policy(.Policy_Not_Initialized)
+	}
+	policy.flags_restricted = flags
 	return policy_error_none()
 }
 
@@ -944,42 +971,6 @@ scope_abstract_unix_socket :: proc(policy: ^Policy) -> Policy_Error {
 	return policy_error_none()
 }
 
-enable_log_new_exec :: proc(policy: ^Policy) -> Policy_Error {
-	if !is_ready(policy) {
-		return policy_error_invalid_policy()
-	}
-	policy.flags_restricted += syscall.Restrict_Self_Flags{.Log_New_Exec_On}
-	policy.features_requested += Feature_Set{.Logging}
-	return policy_error_none()
-}
-
-disable_log_same_exec :: proc(policy: ^Policy) -> Policy_Error {
-	if !is_ready(policy) {
-		return policy_error_invalid_policy()
-	}
-	policy.flags_restricted += syscall.Restrict_Self_Flags{.Log_Same_Exec_Off}
-	policy.features_requested += Feature_Set{.Logging}
-	return policy_error_none()
-}
-
-disable_log_subdomains :: proc(policy: ^Policy) -> Policy_Error {
-	if !is_ready(policy) {
-		return policy_error_invalid_policy()
-	}
-	policy.flags_restricted += syscall.Restrict_Self_Flags{.Log_Subdomains_Off}
-	policy.features_requested += Feature_Set{.Logging}
-	return policy_error_none()
-}
-
-enable_thread_sync :: proc(policy: ^Policy) -> Policy_Error {
-	if !is_ready(policy) {
-		return policy_error_invalid_policy()
-	}
-	policy.flags_restricted += syscall.Restrict_Self_Flags{.Tsync}
-	policy.features_requested += Feature_Set{.Thread_Sync}
-	return policy_error_none()
-}
-
 @(private)
 is_empty :: proc "contextless" (policy: ^Policy) -> bool {
 	return(
@@ -1176,37 +1167,16 @@ requested_feature_support :: proc "contextless" (
 		}
 	}
 
-	requested_logging := policy.flags_restricted & ABI_RESTRICT_V7
-	if requested_logging != {} {
-		if requested_logging & info.supported_restrict != {} {
-			applied += Feature_Set{.Logging}
-		}
-		if requested_logging != requested_logging & info.supported_restrict {
-			omitted += Feature_Set{.Logging}
-		}
-	}
-
-	if .Tsync in policy.flags_restricted {
-		if .Tsync in info.supported_restrict {
-			applied += Feature_Set{.Thread_Sync}
-		} else {
-			omitted += Feature_Set{.Thread_Sync}
-		}
-	}
-
 	return
 }
 
 // handled_features_for_abi reports the access dimensions actually denied by
 // default: the policy's chosen handled set intersected with what the running
-// ABI supports. Logging/Thread_Sync are opt-in restrict_self flags (not part of
-// the handled knob), so they are reported only when the caller enabled them
-// (present in requested) AND the running ABI supports them.
+// ABI supports.
 @(private)
 handled_features_for_abi :: proc "contextless" (
 	info: ABI_Version,
 	handled: Feature_Set,
-	requested: Feature_Set,
 ) -> Feature_Set {
 	features: Feature_Set
 	if .Filesystem in handled && info.supported_access_fs != {} {
@@ -1217,12 +1187,6 @@ handled_features_for_abi :: proc "contextless" (
 	}
 	if .Scope in handled && info.supported_scoped != {} {
 		features += Feature_Set{.Scope}
-	}
-	if .Logging in requested && info.supported_restrict & ABI_RESTRICT_V7 != {} {
-		features += Feature_Set{.Logging}
-	}
-	if .Thread_Sync in requested && .Tsync in info.supported_restrict {
-		features += Feature_Set{.Thread_Sync}
 	}
 	return features
 }
@@ -1236,6 +1200,9 @@ policy_result_with_context :: proc "contextless" (
 	features_requested: Feature_Set,
 	features_applied: Feature_Set = {},
 	features_omitted: Feature_Set = {},
+	flags_requested: syscall.Restrict_Self_Flags = {},
+	flags_applied: syscall.Restrict_Self_Flags = {},
+	flags_omitted: syscall.Restrict_Self_Flags = {},
 ) -> Policy_Result {
 	updated := result
 	updated.abi_requested = abi_requested
@@ -1244,6 +1211,9 @@ policy_result_with_context :: proc "contextless" (
 	updated.features_requested = features_requested
 	updated.features_applied = features_applied
 	updated.features_omitted = features_omitted
+	updated.flags_requested = flags_requested
+	updated.flags_applied = flags_applied
+	updated.flags_omitted = flags_omitted
 	return updated
 }
 
@@ -1328,9 +1298,15 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			policy.features_requested,
 		)
 	}
-	features_handled := handled_features_for_abi(info, policy.features_handled, policy.features_requested)
+	features_handled := handled_features_for_abi(info, policy.features_handled)
 	features_applied, features_omitted := requested_feature_support(policy, info)
-	if features_omitted != {} && !best_effort {
+	// Restrict_self flags are best-effort by nature: unsupported bits are masked
+	// off (never a syscall failure), so report applied/omitted and, in strict mode,
+	// fail when any requested flag is unsupported by the running ABI.
+	flags_requested := policy.flags_restricted
+	flags_applied := flags_requested & info.supported_restrict
+	flags_omitted := flags_requested - info.supported_restrict
+	if (features_omitted != {} || flags_omitted != {}) && !best_effort {
 		return policy_result_error(
 			.Not_Enforced,
 			Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
@@ -1339,9 +1315,11 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			features_handled = features_handled,
 			features_requested = policy.features_requested,
 			features_omitted = features_omitted,
+			flags_requested = flags_requested,
+			flags_omitted = flags_omitted,
 		)
 	}
-	if features_applied == {} {
+	if features_applied == {} && flags_applied == {} {
 		return policy_result_error(
 			.Not_Enforced,
 			Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
@@ -1350,6 +1328,8 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			features_handled = features_handled,
 			features_requested = policy.features_requested,
 			features_omitted = policy.features_requested + features_omitted,
+			flags_requested = flags_requested,
+			flags_omitted = flags_omitted,
 		)
 	}
 
@@ -1366,7 +1346,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	if .Scope in policy.features_handled {
 		ruleset_attr.Scoped = info.supported_scoped
 	}
-	restrict_flags := policy.flags_restricted & info.supported_restrict
+	restrict_flags := flags_applied
 
 	ruleset_fd, create_errno := ops.create_ruleset(&ruleset_attr)
 	if create_errno != 0 {
@@ -1496,7 +1476,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	}
 
 	close_ruleset_fd(ruleset_fd)
-	if features_omitted != {} {
+	if features_omitted != {} || flags_omitted != {} {
 		return Policy_Result {
 			status = .Partially_Enforced,
 			abi_requested = abi,
@@ -1505,6 +1485,9 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			features_requested = policy.features_requested,
 			features_applied = features_applied,
 			features_omitted = features_omitted,
+			flags_requested = flags_requested,
+			flags_applied = flags_applied,
+			flags_omitted = flags_omitted,
 			error = Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
 		}
 	}
@@ -1515,6 +1498,8 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 		features_handled = features_handled,
 		features_requested = policy.features_requested,
 		features_applied = features_applied,
+		flags_requested = flags_requested,
+		flags_applied = flags_applied,
 	}
 }
 

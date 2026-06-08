@@ -222,10 +222,13 @@ test_policy_debug_summary_allocates_and_caller_frees :: proc(t: ^testing.T) {
 		status = .Partially_Enforced,
 		abi_requested = 999,
 		abi_used = 9,
-		features_handled = {.Filesystem, .Network, .Scope, .Logging, .Thread_Sync},
+		features_handled = {.Filesystem, .Network, .Scope},
 		features_requested = {.Filesystem, .Network},
 		features_applied = {.Filesystem},
 		features_omitted = {.Network},
+		flags_requested = {.Log_New_Exec_On, .Tsync},
+		flags_applied = {.Log_New_Exec_On},
+		flags_omitted = {.Tsync},
 		error = Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
 	}
 	summary, err := debug_summary(result, allocator)
@@ -233,7 +236,7 @@ test_policy_debug_summary_allocates_and_caller_frees :: proc(t: ^testing.T) {
 	expect_debug_contains(t, summary, "status=Partially_Enforced")
 	expect_debug_contains(t, summary, "abi_requested=999")
 	expect_debug_contains(t, summary, "abi_used=9")
-	expect_debug_contains(t, summary, "handled=[Filesystem,Network,Scope,Logging,Thread_Sync]")
+	expect_debug_contains(t, summary, "handled=[Filesystem,Network,Scope]")
 	expect_debug_contains(t, summary, "requested=[Filesystem,Network]")
 	expect_debug_contains(t, summary, "applied=[Filesystem]")
 	expect_debug_contains(t, summary, "omitted=[Network]")
@@ -328,10 +331,14 @@ test_policy_builds_network_scope_logging_and_tsync :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_tcp_bind(&policy, 0), "allow_tcp_bind")
 	expect_policy_ok(t, scope_signal(&policy), "scope_signal")
 	expect_policy_ok(t, scope_abstract_unix_socket(&policy), "scope_abstract_unix_socket")
-	expect_policy_ok(t, enable_log_new_exec(&policy), "enable_log_new_exec")
-	expect_policy_ok(t, disable_log_same_exec(&policy), "disable_log_same_exec")
-	expect_policy_ok(t, disable_log_subdomains(&policy), "disable_log_subdomains")
-	expect_policy_ok(t, enable_thread_sync(&policy), "enable_thread_sync")
+	expect_policy_ok(
+		t,
+		handle_flags(
+			&policy,
+			{.Log_New_Exec_On, .Log_Same_Exec_Off, .Log_Subdomains_Off, .Tsync},
+		),
+		"handle_flags",
+	)
 
 	testing.expect_value(t, len(policy.rules_network), 2)
 	testing.expect_value(t, policy.rules_network[0].access_net, syscall.Access_Net_Flags{.Connect_TCP})
@@ -346,8 +353,6 @@ test_policy_builds_network_scope_logging_and_tsync :: proc(t: ^testing.T) {
 	testing.expect(t, .Tsync in policy.flags_restricted, "TSYNC flag should be set")
 	testing.expect(t, .Network in policy.features_requested, "network feature should be requested")
 	testing.expect(t, .Scope in policy.features_requested, "scope feature should be requested")
-	testing.expect(t, .Logging in policy.features_requested, "logging feature should be requested")
-	testing.expect(t, .Thread_Sync in policy.features_requested, "thread sync feature should be requested")
 }
 
 @(test)
@@ -1095,8 +1100,7 @@ test_best_effort_future_abi_999_uses_known_max :: proc(t: ^testing.T) {
 	expect_policy_ok(t, allow_tcp_bind(&policy, 0), "allow_tcp_bind")
 	expect_policy_ok(t, allow_tcp_connect(&policy, 443), "allow_tcp_connect")
 	expect_policy_ok(t, scope_signal(&policy), "scope_signal")
-	expect_policy_ok(t, enable_log_new_exec(&policy), "enable_log_new_exec")
-	expect_policy_ok(t, enable_thread_sync(&policy), "enable_thread_sync")
+	expect_policy_ok(t, handle_flags(&policy, {.Log_New_Exec_On, .Tsync}), "handle_flags")
 
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
@@ -1105,9 +1109,10 @@ test_best_effort_future_abi_999_uses_known_max :: proc(t: ^testing.T) {
 	testing.expect(t, .Filesystem in result.features_applied, "filesystem should apply at clamped abi v9")
 	testing.expect(t, .Network in result.features_applied, "network should apply at clamped abi v9")
 	testing.expect(t, .Scope in result.features_applied, "scope should apply at clamped abi v9")
-	testing.expect(t, .Logging in result.features_applied, "logging should apply at clamped abi v9")
-	testing.expect(t, .Thread_Sync in result.features_applied, "TSYNC should apply at clamped abi v9")
+	testing.expect(t, .Log_New_Exec_On in result.flags_applied, "logging should apply at clamped abi v9")
+	testing.expect(t, .Tsync in result.flags_applied, "TSYNC should apply at clamped abi v9")
 	testing.expect_value(t, result.features_omitted, Feature_Set{})
+	testing.expect_value(t, result.flags_omitted, syscall.Restrict_Self_Flags{})
 	// Create call carries the full deny-by-default handled set for the ABI...
 	testing.expect_value(t, fake_state.calls[1].fs_access, abi_versions[9].supported_access_fs)
 	testing.expect_value(t, fake_state.calls[1].net_access, syscall.Access_Net_Flags{.Bind_TCP, .Connect_TCP})
@@ -1121,7 +1126,7 @@ test_best_effort_future_abi_999_uses_known_max :: proc(t: ^testing.T) {
 	expect_debug_contains(t, summary, "status=Enforced")
 	expect_debug_contains(t, summary, "abi_requested=999")
 	expect_debug_contains(t, summary, "abi_used=9")
-	expect_debug_contains(t, summary, "applied=[Filesystem,Network,Scope,Logging,Thread_Sync]")
+	expect_debug_contains(t, summary, "applied=[Filesystem,Network,Scope]")
 	expect_debug_contains(t, summary, "omitted=[]")
 }
 
@@ -1249,14 +1254,16 @@ test_logging_options_abi6_vs_abi7 :: proc(t: ^testing.T) {
 	expect_policy_ok(t, init(&policy), "policy_init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
-	expect_policy_ok(t, enable_log_new_exec(&policy), "enable_log_new_exec")
-	expect_policy_ok(t, disable_log_same_exec(&policy), "disable_log_same_exec")
-	expect_policy_ok(t, disable_log_subdomains(&policy), "disable_log_subdomains")
+	expect_policy_ok(
+		t,
+		handle_flags(&policy, {.Log_New_Exec_On, .Log_Same_Exec_Off, .Log_Subdomains_Off}),
+		"handle_flags",
+	)
 
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Partially_Enforced)
 	testing.expect(t, .Filesystem in result.features_applied, "filesystem should still apply at abi v6")
-	testing.expect(t, .Logging in result.features_omitted, "abi v6 should omit logging")
+	testing.expect(t, .Log_New_Exec_On in result.flags_omitted, "abi v6 should omit logging")
 	testing.expect_value(t, fake_state.calls[fake_state.call_count - 2].flags, syscall.Restrict_Self_Flags{})
 
 	fake_reset()
@@ -1264,7 +1271,7 @@ test_logging_options_abi6_vs_abi7 :: proc(t: ^testing.T) {
 	apply_ops = fake_apply_ops()
 	result = apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, .Logging in result.features_applied, "abi v7 should apply logging")
+	testing.expect(t, .Log_New_Exec_On in result.flags_applied, "abi v7 should apply logging")
 	restrict_call := fake_state.calls[fake_state.call_count - 2]
 	testing.expect(t, .Log_New_Exec_On in restrict_call.flags, "new exec logging flag should be passed")
 	testing.expect(t, .Log_Same_Exec_Off in restrict_call.flags, "same exec logging flag should be passed")
@@ -1281,11 +1288,11 @@ test_thread_sync_abi7_vs_abi8 :: proc(t: ^testing.T) {
 	expect_policy_ok(t, init(&policy), "policy_init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
-	expect_policy_ok(t, enable_thread_sync(&policy), "enable_thread_sync")
+	expect_policy_ok(t, handle_flags(&policy, {.Tsync}), "handle_flags")
 
 	strict_result := apply_strict(&policy)
 	testing.expect_value(t, strict_result.status, Policy_Status.Not_Enforced)
-	testing.expect(t, .Thread_Sync in strict_result.features_omitted, "abi v7 strict apply should report omitted TSYNC")
+	testing.expect(t, .Tsync in strict_result.flags_omitted, "abi v7 strict apply should report omitted TSYNC")
 	testing.expect_value(t, count_fake_calls(.Create), 0)
 
 	fake_reset()
@@ -1294,7 +1301,7 @@ test_thread_sync_abi7_vs_abi8 :: proc(t: ^testing.T) {
 	result := apply_best_effort(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Partially_Enforced)
 	testing.expect(t, .Filesystem in result.features_applied, "filesystem should still apply at abi v7")
-	testing.expect(t, .Thread_Sync in result.features_omitted, "abi v7 best effort should report omitted TSYNC")
+	testing.expect(t, .Tsync in result.flags_omitted, "abi v7 best effort should report omitted TSYNC")
 	testing.expect(t, !(.Tsync in fake_state.calls[fake_state.call_count - 2].flags), "TSYNC must not be passed below abi v8")
 
 	fake_reset()
@@ -1302,7 +1309,7 @@ test_thread_sync_abi7_vs_abi8 :: proc(t: ^testing.T) {
 	apply_ops = fake_apply_ops()
 	result = apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, .Thread_Sync in result.features_applied, "abi v8 should apply explicit TSYNC")
+	testing.expect(t, .Tsync in result.flags_applied, "abi v8 should apply explicit TSYNC")
 	testing.expect(t, .Tsync in fake_state.calls[fake_state.call_count - 2].flags, "TSYNC should be passed at abi v8")
 }
 
@@ -1379,63 +1386,71 @@ test_policy_handle_narrows_handled_set :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_handle_features_rejects_non_dimension :: proc(t: ^testing.T) {
-	// Logging/Thread_Sync are opt-in restrict flags, not handled-access dimensions.
-	// Passing them to handle_features must fail loudly rather than be silently
-	// dropped, so a caller never believes a non-dimension feature was handled.
-	policy: Policy
-	expect_policy_ok(t, init(&policy), "init")
-	defer cleanup(&policy)
-
-	err := handle_features(&policy, {.Filesystem, .Logging})
-	testing.expect_value(t, err.kind, Policy_Error_Kind.Invalid_Policy)
-	testing.expect_value(t, err.cause, Policy_Error_Cause.Validation)
-	testing.expect_value(t, err.validation, Policy_Validation_Failure.Non_Supported_Feature)
-
-	err = handle_features(&policy, {.Thread_Sync})
-	testing.expect_value(t, err.validation, Policy_Validation_Failure.Non_Supported_Feature)
-
-	// The rejected call leaves the handled set unchanged (still the init default).
-	testing.expect_value(t, policy.features_handled, HANDLED_DEFAULT)
-}
-
-@(test)
-test_logging_thread_sync_not_handled_unless_enabled :: proc(t: ^testing.T) {
+test_handle_flags_reported_when_supported :: proc(t: ^testing.T) {
 	saved_ops := use_fake_apply_ops()
 	defer apply_ops = saved_ops
 	fake_state.abi = 9 // ABI supports logging + TSYNC
 
-	// No enable_* calls: Logging/Thread_Sync must NOT appear in features_handled
-	// even though the running ABI supports them (they are opt-in restrict flags).
 	policy: Policy
 	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/usr"), "allow_ro_dirs")
+	expect_policy_ok(t, handle_flags(&policy, {.Log_New_Exec_On, .Tsync}), "handle_flags")
 
 	result := apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, !(.Logging in result.features_handled), "logging not handled unless enabled")
-	testing.expect(t, !(.Thread_Sync in result.features_handled), "thread_sync not handled unless enabled")
+	testing.expect_value(
+		t,
+		result.flags_requested,
+		syscall.Restrict_Self_Flags{.Log_New_Exec_On, .Tsync},
+	)
+	testing.expect(t, .Log_New_Exec_On in result.flags_applied, "logging flag applied at abi v9")
+	testing.expect(t, .Tsync in result.flags_applied, "tsync flag applied at abi v9")
+	testing.expect_value(t, result.flags_omitted, syscall.Restrict_Self_Flags{})
+	testing.expect(t, .Tsync in fake_state.calls[fake_state.call_count - 2].flags, "tsync passed to restrict_self")
 }
 
 @(test)
-test_logging_thread_sync_handled_when_enabled :: proc(t: ^testing.T) {
+test_handle_flags_absent_by_default :: proc(t: ^testing.T) {
 	saved_ops := use_fake_apply_ops()
 	defer apply_ops = saved_ops
-	fake_state.abi = 9
+	fake_state.abi = 9 // ABI supports logging + TSYNC
 
-	// With enable_* calls and an ABI that supports them, both are reported handled.
+	// No handle_flags call: restrict flags stay empty even though the ABI supports them.
 	policy: Policy
 	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/usr"), "allow_ro_dirs")
-	expect_policy_ok(t, enable_log_new_exec(&policy), "enable_log_new_exec")
-	expect_policy_ok(t, enable_thread_sync(&policy), "enable_thread_sync")
 
 	result := apply_strict(&policy)
 	testing.expect_value(t, result.status, Policy_Status.Enforced)
-	testing.expect(t, .Logging in result.features_handled, "logging handled when enabled")
-	testing.expect(t, .Thread_Sync in result.features_handled, "thread_sync handled when enabled")
+	testing.expect_value(t, result.flags_requested, syscall.Restrict_Self_Flags{})
+	testing.expect_value(t, result.flags_applied, syscall.Restrict_Self_Flags{})
+}
+
+@(test)
+test_handle_flags_strict_fails_on_unsupported :: proc(t: ^testing.T) {
+	saved_ops := use_fake_apply_ops()
+	defer apply_ops = saved_ops
+	fake_state.abi = 6 // pre-logging/tsync ABI
+
+	policy: Policy
+	expect_policy_ok(t, init(&policy), "init")
+	defer cleanup(&policy)
+	expect_policy_ok(t, allow_ro_dirs(&policy, "/usr"), "allow_ro_dirs")
+	expect_policy_ok(t, handle_flags(&policy, {.Tsync}), "handle_flags")
+
+	strict := apply_strict(&policy)
+	testing.expect_value(t, strict.status, Policy_Status.Not_Enforced)
+	testing.expect_value(t, strict.error.kind, Policy_Error_Kind.Unsupported_Feature)
+	testing.expect(t, .Tsync in strict.flags_omitted, "unsupported tsync reported omitted")
+
+	fake_reset()
+	fake_state.abi = 6
+	apply_ops = fake_apply_ops()
+	best := apply_best_effort(&policy)
+	testing.expect_value(t, best.status, Policy_Status.Partially_Enforced)
+	testing.expect(t, .Tsync in best.flags_omitted, "best effort reports omitted tsync")
 }
 
 @(test)
