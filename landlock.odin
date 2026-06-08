@@ -283,6 +283,7 @@ Policy_Validation_Failure :: enum {
 	Empty_Policy,
 	Empty_Handled_Set,
 	Rule_For_Unhandled_Feature,
+	Non_Supported_Feature,
 	Invalid_Path,
 }
 
@@ -688,11 +689,17 @@ init :: proc(policy: ^Policy, allocator := context.allocator) -> Policy_Error {
 // handle_features narrows the deny-by-default handled set to the given access
 // dimensions (.Filesystem/.Network/.Scope); other dimensions are left
 // unrestricted. By default init handles all three. Call e.g.
-// handle_features(&p, {.Filesystem}) for filesystem-only sandboxing. Dimensions
-// other than the three access dimensions are ignored.
+// handle_features(&p, {.Filesystem}) for filesystem-only sandboxing. Only the
+// three access dimensions are valid here; Logging/Thread_Sync are opt-in flags
+// enabled via enable_*/disable_* and passing them (or any non-dimension feature)
+// is rejected with Invalid_Policy (.Non_Supported_Feature) rather than silently
+// ignored.
 handle_features :: proc(policy: ^Policy, dimensions: Feature_Set) -> Policy_Error {
 	if !policy_is_ready(policy) {
 		return policy_error_invalid_policy(.Policy_Not_Initialized)
+	}
+	if dimensions - HANDLED_DEFAULT != {} {
+		return policy_error_invalid_policy(.Non_Supported_Feature)
 	}
 	policy.features_handled = dimensions & HANDLED_DEFAULT
 	return policy_error_none()

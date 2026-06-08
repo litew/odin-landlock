@@ -1379,6 +1379,27 @@ test_policy_handle_narrows_handled_set :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_handle_features_rejects_non_dimension :: proc(t: ^testing.T) {
+	// Logging/Thread_Sync are opt-in restrict flags, not handled-access dimensions.
+	// Passing them to handle_features must fail loudly rather than be silently
+	// dropped, so a caller never believes a non-dimension feature was handled.
+	policy: Policy
+	expect_policy_ok(t, init(&policy), "init")
+	defer cleanup(&policy)
+
+	err := handle_features(&policy, {.Filesystem, .Logging})
+	testing.expect_value(t, err.kind, Policy_Error_Kind.Invalid_Policy)
+	testing.expect_value(t, err.cause, Policy_Error_Cause.Validation)
+	testing.expect_value(t, err.validation, Policy_Validation_Failure.Non_Supported_Feature)
+
+	err = handle_features(&policy, {.Thread_Sync})
+	testing.expect_value(t, err.validation, Policy_Validation_Failure.Non_Supported_Feature)
+
+	// The rejected call leaves the handled set unchanged (still the init default).
+	testing.expect_value(t, policy.features_handled, HANDLED_DEFAULT)
+}
+
+@(test)
 test_logging_thread_sync_not_handled_unless_enabled :: proc(t: ^testing.T) {
 	saved_ops := use_fake_apply_ops()
 	defer apply_ops = saved_ops
