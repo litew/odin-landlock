@@ -15,9 +15,11 @@ on:
     types: [labeled]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Tags below are confirmed present in quay.io/lvh-images/kind (the `-main` rolling
-# tags; pin the dated "<ver>-YYYYMMDD.hhmmss" variants for full reproducibility).
-# Still to confirm from the first runs:
+# Tags are pinned to dated builds in quay.io/lvh-images/kind. NOTE: the
+# little-vm-helper action only understands dated tags ("<ver>-YYYYMMDD.hhmmss") —
+# the lvh binary strips "-main" when writing the qcow2 but the action does not, so
+# "-main" tags fail with "unable to find local file ...". Dated tags also pin the
+# build for reproducibility. Still to confirm from the first runs:
 #  - Each image actually has Landlock in its active LSM stack. Every job prints
 #    `/sys/kernel/security/lsm`; if a >=5.13 kernel reports abi=0, that image was
 #    built without landlock in CONFIG_LSM and the row needs a different image.
@@ -42,13 +44,13 @@ jobs:
         # and 6.10(v5) aren't published, but 6.12 (v6) cumulatively exercises the
         # network (v4) and ioctl (v5) rights, so the v4+ enforcement battery runs there.
         include:
-          - { name: "no-landlock (5.4)", image_version: "5.4-main",      expect_abi: "0" }
-          - { name: "v1 FS (5.15)",      image_version: "5.15-main",     expect_abi: "1" }
-          - { name: "v2 REFER (6.1)",    image_version: "6.1-main",      expect_abi: "2" }
-          - { name: "v3 TRUNCATE (6.6)", image_version: "6.6-main",      expect_abi: "3" }
-          - { name: "v6 scope+net (6.12)", image_version: "6.12-main",   expect_abi: "6" }
-          - { name: "v7 logging (6.18)", image_version: "6.18-main",     expect_abi: "7" }
-          - { name: "newest (bpf-next)", image_version: "bpf-next-main", expect_abi: ""  }
+          - { name: "no-landlock (5.4)",   image_version: "5.4-20260603.072225",      expect_abi: "0" }
+          - { name: "v1 FS (5.15)",        image_version: "5.15-20260603.072225",     expect_abi: "1" }
+          - { name: "v2 REFER (6.1)",      image_version: "6.1-20260603.072225",      expect_abi: "2" }
+          - { name: "v3 TRUNCATE (6.6)",   image_version: "6.6-20260603.072225",      expect_abi: "3" }
+          - { name: "v6 scope+net (6.12)", image_version: "6.12-20260603.072225",     expect_abi: "6" }
+          - { name: "v7 logging (6.18)",   image_version: "6.18-20260603.072225",     expect_abi: "7" }
+          - { name: "newest (bpf-next)",   image_version: "bpf-next-20260603.072225", expect_abi: ""  }
     name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v5
