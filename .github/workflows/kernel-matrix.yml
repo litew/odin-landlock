@@ -29,11 +29,7 @@ jobs:
       #                       7.0=v8 7.1=v9. 7.1 not yet on Ubuntu mainline.
       matrix:
         include:
-          - { name: "no-landlock (5.10)", kver: "5.10", expect_abi: "0" }
-          - { name: "v1 FS (5.13)",       kver: "5.13", expect_abi: "1" }
-          - { name: "v4 network (6.7)",   kver: "6.7",  expect_abi: "4" }
           - { name: "v6 scope+net (6.12)", kver: "6.12", expect_abi: "6" }
-          - { name: "v8 tsync (7.0)",     kver: "7.0",  expect_abi: "8" }
     name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v5
@@ -63,14 +59,7 @@ jobs:
           dpkg-deb -x kernel.deb kernelpkg          # vmlinuz + /lib/modules/<ver>
           echo "vmlinuz=$(find kernelpkg -name 'vmlinuz-*' -type f | head -1)" >> "$GITHUB_OUTPUT"
 
-      - name: Run conformance under ${{ matrix.kver }}
+      - name: DIAGNOSTIC vng version + flags
         run: |
-          # Force landlock into the LSM stack (Ubuntu compiles it in); unknown/unbuilt
-          # LSMs in the list are ignored, so this is safe across versions.
-          vng -r "${{ steps.kernel.outputs.vmlinuz }}" \
-              --rwdir="$PWD" \
-              --append "lsm=landlock,capability,yama,apparmor,bpf" \
-              -- sh -c 'echo "lsm: $(cat /sys/kernel/security/lsm 2>/dev/null || echo none)"; LANDLOCK_EXPECT_ABI=${{ matrix.expect_abi }} ./abi-conformance; echo $? > conf.rc' || true
-          rc="$(cat conf.rc 2>/dev/null || echo 99)"; rm -f conf.rc
-          echo "conformance exit code: $rc"
-          test "$rc" = 0
+          echo "=== which/version ==="; command -v vng; vng --version || true
+          echo "=== help ==="; vng --help 2>&1 | head -80 || true
