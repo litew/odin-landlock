@@ -470,32 +470,36 @@ debug_summary :: proc(
 
 	fmt.sbprintf(
 		&builder,
-		"status=%v abi_requested=%d abi_used=%d handled=",
+		"status=%v\nabi_requested=%d\nabi_used=%d\nfeatures_handled=",
 		result.status,
 		result.abi_requested,
 		result.abi_used,
 	)
 	write_feature_set(&builder, result.features_handled)
-	fmt.sbprint(&builder, " requested=")
+	fmt.sbprint(&builder, "\nfeatures_requested=")
 	write_feature_set(&builder, result.features_requested)
-	fmt.sbprint(&builder, " applied=")
+	fmt.sbprint(&builder, "\nfeatures_applied=")
 	write_feature_set(&builder, result.features_applied)
-	fmt.sbprint(&builder, " omitted=")
+	fmt.sbprint(&builder, "\nfeatures_omitted=")
 	write_feature_set(&builder, result.features_omitted)
 	fmt.sbprintf(
 		&builder,
-		" flags_requested=%w flags_applied=%w flags_omitted=%w",
+		"\nflags_requested=%w\nflags_applied=%w\nflags_omitted=%w",
 		result.flags_requested,
 		result.flags_applied,
 		result.flags_omitted,
 	)
+	// tsync reflects whether the restriction was applied to ALL threads. When off,
+	// only the calling thread (and its future children) is sandboxed — a footgun
+	// for processes that spawned threads before apply.
+	fmt.sbprint(&builder, .Tsync in result.flags_applied ? "\ntsync=on" : "\ntsync=off")
 	fmt.sbprintf(
 		&builder,
-		" error_kind=%v error_cause=%v raw_errno=%d validation=%v",
+		"\nerror_kind=%v\nerror_cause=%v\nvalidation=%v\nraw_errno=%d\n",
 		result.error.kind,
 		result.error.cause,
-		result.error.raw_errno,
 		result.error.validation,
+		result.error.raw_errno,
 	)
 
 	// The summary must fit within the reserved capacity. Reaching it means the
@@ -570,7 +574,10 @@ policy_result_syscall_failed :: proc "contextless" (
 	cause: Policy_Error_Cause,
 	raw_errno: i32,
 ) -> Policy_Result {
-	return policy_result_error(.Not_Enforced, policy_error_errno(.Syscall_Failed, cause, raw_errno))
+	return policy_result_error(
+		.Not_Enforced,
+		policy_error_errno(.Syscall_Failed, cause, raw_errno),
+	)
 }
 
 @(private)
@@ -1254,7 +1261,8 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 	// construction contradiction: the rule can never take effect. Reject it as an
 	// Invalid_Policy before any kernel call, naming the offending dimension(s) in
 	// features_omitted rather than silently folding them into an ABI-gap omission.
-	if unhandled_with_rules := (policy.features_requested & HANDLED_DEFAULT) - policy.features_handled;
+	if unhandled_with_rules :=
+		   (policy.features_requested & HANDLED_DEFAULT) - policy.features_handled;
 	   unhandled_with_rules != {} {
 		return policy_result_error(
 			.Not_Enforced,
@@ -1365,12 +1373,7 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 
 	opened: [dynamic]Apply_Path_Fd
 	alloc_err: mem.Allocator_Error
-	opened, alloc_err = make(
-		[dynamic]Apply_Path_Fd,
-		0,
-		len(policy.rules_path),
-		context.allocator,
-	)
+	opened, alloc_err = make([dynamic]Apply_Path_Fd, 0, len(policy.rules_path), context.allocator)
 	if alloc_err != nil {
 		close_ruleset_fd(ruleset_fd)
 		return policy_result_error(

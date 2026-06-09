@@ -245,9 +245,23 @@ test_policy_debug_summary_allocates_and_caller_frees :: proc(t: ^testing.T) {
 	expect_debug_contains(t, summary, "error_cause=Unsupported_Feature")
 	expect_debug_contains(t, summary, "raw_errno=0")
 	expect_debug_contains(t, summary, "validation=None")
+	// Tsync requested but not applied (omitted) -> siblings unrestricted.
+	expect_debug_contains(t, summary, "tsync=off")
 
 	delete(summary, allocator)
 	testing.expect_value(t, len(track.allocation_map), 0)
+}
+
+@(test)
+test_debug_summary_tsync_on_when_applied :: proc(t: ^testing.T) {
+	result := Policy_Result {
+		status        = .Enforced,
+		flags_applied = {.Tsync},
+	}
+	summary, err := debug_summary(result)
+	testing.expect_value(t, err.kind, Policy_Error_Kind.None)
+	defer delete(summary)
+	expect_debug_contains(t, summary, "tsync=on")
 }
 
 @(test)
