@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Odin (latest monthly release)
+        uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release: latest
+
+      - run: odin version
+      - run: odin report   # toolchain/LLVM info for debugging CI failures
+
+      - name: Compile check
+        run: odin check . -no-entry-point
+
+      - name: Unit tests (landlock)
+        run: odin test . -define:ODIN_TEST_FANCY=false
+
+      - name: Unit tests (syscall)
+        run: odin test syscall -define:ODIN_TEST_FANCY=false
+
+      - name: Build example
+        run: odin build examples -out:/tmp/example
+
+      - name: README example compiles
+        run: |
+          mkdir -p _docprobe
+          awk '/^\[source,odin\]/{f=1;next} f&&/^----$/{c++; if(c==1)next; if(c==2)exit} c==1{print}' \
+            README.adoc > _docprobe/main.odin
+          sed -i 's#import landlock$#import landlock ".."#' _docprobe/main.odin
+          odin build _docprobe -out:/tmp/docprobe
+          rm -rf _docprobe
+
+      - name: Integration test (real kernel, best-effort)
+        run: |
+          grep -q landlock /sys/kernel/security/lsm \
+            && echo "landlock present in LSM stack" \
+            || echo "landlock NOT in LSM stack -> integration test will skip"
+          odin test . -define:LANDLOCK_INTEGRATION=true -define:ODIN_TEST_THREADS=1
+
+      - name: Cross-target compile check (POSIX stubs)
+        run: |
+          odin check . -no-entry-point -target:darwin_amd64
+          odin check . -no-entry-point -target:freebsd_amd64

@@ -1,0 +1,95 @@
+name: Kernel matrix (ABI conformance)
+
+# Real-kernel Landlock conformance across kernel versions, using Ubuntu mainline
+# kernels (which ship CONFIG_SECURITY_LANDLOCK=y) booted under virtme-ng with the
+# host rootfs + the host-built tools/abi-conformance binary. Each job asserts the
+# expected ABI and that real enforcement / the unavailable path behaves.
+#
+# (The Cilium little-vm-helper images were tried first but do NOT compile Landlock
+#  in — "# CONFIG_SECURITY_LANDLOCK is not set" — so they can't be used here.)
+#
+# Off the hot push/PR path — slow, uses nested virtualization:
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    if: github.event_name != 'pull_request' || github.event.label.name == 'kernel-matrix'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      # kver -> Landlock ABI: 5.13=v1 5.19=v2 6.2=v3 6.7=v4 6.10=v5 6.12=v6 6.15=v7
+      #                       7.0=v8 7.1=v9. 7.1 not yet on Ubuntu mainline.
+      matrix:
+        include:
+          - { name: "no-landlock (5.10)",  kver: "5.10", expect_abi: "0" }
+          - { name: "v1 FS (5.13)",        kver: "5.13", expect_abi: "1" }
+          - { name: "v4 network (6.7)",    kver: "6.7",  expect_abi: "4" }
+          - { name: "v6 scope+net (6.12)", kver: "6.12", expect_abi: "6" }
+          - { name: "v7 logging (6.15)",   kver: "6.15", expect_abi: "7" }
+          # v8 (7.0) / v9 (7.1) don't boot under the runner's virtme-ng 1.22 (too new);
+          # add when the tooling supports them:
+          # - { name: "v8 tsync (7.0)",    kver: "7.0",  expect_abi: "8" }
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Odin (latest monthly release)
+        uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release: latest
+
+      - name: Build conformance binary (host)
+        run: odin build tools/abi-conformance -out:abi-conformance
+
+      - name: Install virtme-ng + qemu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 virtme-ng
+
+      - name: Fetch Ubuntu mainline kernel ${{ matrix.kver }}
+        id: kernel
+        run: |
+          set -euo pipefail
+          base="https://kernel.ubuntu.com/mainline/v${{ matrix.kver }}/amd64/"
+          listing=$(curl -fsSL "$base")
+          # Ubuntu splits the kernel image (vmlinuz) and the modules into separate debs.
+          img=$(echo "$listing" | grep -oE 'linux-image-unsigned-[^"]+_amd64\.deb' | head -1)
+          mod=$(echo "$listing" | grep -oE 'linux-modules-[^"]+_amd64\.deb' | head -1)
+          for d in "$img" "$mod"; do
+            echo "fetching $d"
+            curl -fsSL -o "pkg.deb" "$base$d"
+            dpkg-deb -x pkg.deb kernelpkg
+          done
+          # Make the modules discoverable by virtme-ng (it builds an initramfs with
+          # the virtio/9p transport modules to mount the host rootfs). Path-agnostic:
+          # older debs ship lib/modules, newer (usr-merged) ship usr/lib/modules.
+          moddir=$(find kernelpkg -type d -path '*lib/modules' | head -1)
+          sudo cp -a "$moddir"/* /lib/modules/
+          echo "vmlinuz=$(find kernelpkg -name 'vmlinuz-*' -type f | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Run conformance under ${{ matrix.kver }}
+        run: |
+          # Guest script (runs in the VM via virtme-ng --exec). Force landlock into
+          # the LSM stack (Ubuntu compiles it in); unknown LSMs are ignored.
+          cat > conf-run.sh <<EOF
+          cd "$PWD"
+          echo "lsm: \$(cat /sys/kernel/security/lsm 2>/dev/null || echo none)"
+          LANDLOCK_EXPECT_ABI=${{ matrix.expect_abi }} ./abi-conformance
+          echo \$? > conf.rc
+          EOF
+          vng --run "${{ steps.kernel.outputs.vmlinuz }}" \
+              --rwdir="$PWD" \
+              --append "lsm=landlock,capability,yama,apparmor,bpf" \
+              --exec "sh $PWD/conf-run.sh" || true
+          rc="$(cat conf.rc 2>/dev/null || echo 99)"; rm -f conf.rc conf-run.sh
+          echo "conformance exit code: $rc"
+          test "$rc" = 0
