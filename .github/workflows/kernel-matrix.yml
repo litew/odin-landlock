@@ -57,9 +57,25 @@ jobs:
           echo "fetching $deb"
           curl -fsSL -o kernel.deb "$base$deb"
           dpkg-deb -x kernel.deb kernelpkg          # vmlinuz + /lib/modules/<ver>
+          # Make the modules discoverable by virtme-ng (it builds an initramfs with
+          # the virtio/9p transport modules to mount the host rootfs).
+          sudo cp -a kernelpkg/lib/modules/* /lib/modules/
           echo "vmlinuz=$(find kernelpkg -name 'vmlinuz-*' -type f | head -1)" >> "$GITHUB_OUTPUT"
 
-      - name: DIAGNOSTIC vng version + flags
+      - name: Run conformance under ${{ matrix.kver }}
         run: |
-          echo "=== which/version ==="; command -v vng; vng --version || true
-          echo "=== help ==="; vng --help 2>&1 | head -80 || true
+          # Guest script (runs in the VM via virtme-ng --exec). Force landlock into
+          # the LSM stack (Ubuntu compiles it in); unknown LSMs are ignored.
+          cat > conf-run.sh <<EOF
+          cd "$PWD"
+          echo "lsm: \$(cat /sys/kernel/security/lsm 2>/dev/null || echo none)"
+          LANDLOCK_EXPECT_ABI=${{ matrix.expect_abi }} ./abi-conformance
+          echo \$? > conf.rc
+          EOF
+          vng --run "${{ steps.kernel.outputs.vmlinuz }}" \
+              --rwdir="$PWD" \
+              --append "lsm=landlock,capability,yama,apparmor,bpf" \
+              --exec "sh $PWD/conf-run.sh" || true
+          rc="$(cat conf.rc 2>/dev/null || echo 99)"; rm -f conf.rc conf-run.sh
+          echo "conformance exit code: $rc"
+          test "$rc" = 0
