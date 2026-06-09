@@ -1,0 +1,92 @@
+name: Kernel matrix (ABI conformance)
+
+# Real-kernel Landlock conformance across a representative set of kernel versions.
+# Boots each kernel under virtme-ng (host rootfs + chosen kernel, KVM-accelerated)
+# and runs tools/abi-conformance, asserting the kernel reports the expected ABI and
+# that real enforcement / the unavailable-or-disabled paths behave.
+#
+# Kept OFF the hot push/PR path — it is slow and uses nested virtualization:
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
+  pull_request:
+    types: [labeled]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UNVERIFIED SCAFFOLD. The "Fetch kernel" step is the part to validate/iterate on
+# in CI: each kernel image MUST have CONFIG_SECURITY_LANDLOCK=y *and* landlock in
+# the active LSM stack. The job logs `/sys/kernel/security/lsm` inside the VM so the
+# first runs show whether landlock is present. If an Ubuntu-mainline kernel lacks
+# landlock in its default lsm=, pass `--append "lsm=...,landlock"` (vng) or switch
+# that row to a build-with-config fallback / a little-vm-helper image.
+# ─────────────────────────────────────────────────────────────────────────────
+
+permissions:
+  contents: read
+
+jobs:
+  conformance:
+    # Only run the labeled trigger when the label is exactly "kernel-matrix".
+    if: github.event_name != 'pull_request' || github.event.label.name == 'kernel-matrix'
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        # kver -> expect_abi mapping (Landlock ABI landed in):
+        #   5.13=v1  5.19=v2  6.2=v3  6.7=v4  6.10=v5  6.12=v6  6.15=v7  7.0=v8  7.1=v9
+        # v8/v9 rows are commented out until 7.0/7.1 kernels are available from the
+        # chosen source; add them then.
+        include:
+          - { name: "no-landlock (pre-5.13)", kver: "5.10",  expect_abi: 0, mode: unavailable }
+          - { name: "lsm-disabled",           kver: "6.12",  expect_abi: 0, mode: lsm_off }
+          - { name: "v1 FS",                  kver: "5.13",  expect_abi: 1, mode: enforce }
+          - { name: "v4 network",             kver: "6.7",   expect_abi: 4, mode: enforce }
+          - { name: "v6 scope",               kver: "6.12",  expect_abi: 6, mode: enforce }
+          - { name: "v7 logging (newest)",    kver: "6.15",  expect_abi: 7, mode: enforce }
+          # - { name: "v8 tsync",  kver: "7.0", expect_abi: 8, mode: enforce }
+          # - { name: "v9 newest", kver: "7.1", expect_abi: 9, mode: enforce }
+    name: ${{ matrix.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Odin (latest monthly release)
+        uses: laytan/setup-odin@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          release: latest
+
+      - name: Build conformance binary (host)
+        run: odin build tools/abi-conformance -out:abi-conformance
+
+      - name: Install virtme-ng + qemu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 virtme-ng
+          # KVM acceleration (GitHub Linux runners expose /dev/kvm)
+          sudo chmod 0666 /dev/kvm || true
+
+      - name: Fetch kernel (VALIDATE — see header)
+        id: kernel
+        run: |
+          set -euo pipefail
+          ver="${{ matrix.kver }}"
+          base="https://kernel.ubuntu.com/mainline/v${ver}/amd64/"
+          deb=$(curl -fsSL "$base" | grep -oE 'linux-image-unsigned-[^"]+_amd64\.deb' | head -1)
+          echo "downloading $base$deb"
+          curl -fsSL -o k.deb "$base$deb"
+          dpkg-deb -x k.deb kpkg
+          vmlinuz=$(find kpkg -name 'vmlinuz-*' | head -1)
+          echo "vmlinuz=$vmlinuz" >> "$GITHUB_OUTPUT"
+
+      - name: Run conformance under kernel ${{ matrix.kver }}
+        run: |
+          set -euo pipefail
+          append=""
+          if [ "${{ matrix.mode }}" = "lsm_off" ]; then
+            append='--append lsm=capability,yama'   # landlock omitted from the LSM stack
+          fi
+          # Log the active LSM stack, then run the probe with the expected ABI.
+          vng -r "${{ steps.kernel.outputs.vmlinuz }}" $append -- \
+            sh -c 'echo "lsm: $(cat /sys/kernel/security/lsm)"; \
+                   LANDLOCK_EXPECT_ABI=${{ matrix.expect_abi }} ./abi-conformance'
