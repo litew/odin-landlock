@@ -1,34 +1,20 @@
 name: Kernel matrix (ABI conformance)
 
-# Real-kernel Landlock conformance across a representative set of kernel versions,
-# using Cilium little-vm-helper (LVH) prebuilt VM images. Each job boots one kernel,
-# mounts the repo at /host, and runs the host-built tools/abi-conformance binary,
-# asserting the expected ABI (where known) and that real enforcement / the
-# unavailable paths behave.
+# Real-kernel Landlock conformance across kernel versions, using Ubuntu mainline
+# kernels (which ship CONFIG_SECURITY_LANDLOCK=y) booted under virtme-ng with the
+# host rootfs + the host-built tools/abi-conformance binary. Each job asserts the
+# expected ABI and that real enforcement / the unavailable path behaves.
 #
-# Kept OFF the hot push/PR path — slow, uses nested virtualization:
+# (The Cilium little-vm-helper images were tried first but do NOT compile Landlock
+#  in — "# CONFIG_SECURITY_LANDLOCK is not set" — so they can't be used here.)
+#
+# Off the hot push/PR path — slow, uses nested virtualization:
 on:
   workflow_dispatch:
   schedule:
     - cron: "0 6 * * 1" # weekly, Monday 06:00 UTC
   pull_request:
     types: [labeled]
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Tags are pinned to dated builds in quay.io/lvh-images/kind. NOTE: the
-# little-vm-helper action only understands dated tags ("<ver>-YYYYMMDD.hhmmss") —
-# the lvh binary strips "-main" when writing the qcow2 but the action does not, so
-# "-main" tags fail with "unable to find local file ...". Dated tags also pin the
-# build for reproducibility. Still to confirm from the first runs:
-#  - Each image actually has Landlock in its active LSM stack. Every job prints
-#    `/sys/kernel/security/lsm`; if a >=5.13 kernel reports abi=0, that image was
-#    built without landlock in CONFIG_LSM and the row needs a different image.
-#
-# kernel -> Landlock ABI: 5.13=v1 5.19=v2 6.2=v3 6.7=v4 6.10=v5 6.12=v6 6.15=v7
-#                         7.0=v8 7.1=v9. expect_abi is left "" (no assertion) where
-# the LVH kernel's exact ABI isn't pinned; the binary still probes + runs the
-# enforcement battery for whatever ABI it finds.
-# ─────────────────────────────────────────────────────────────────────────────
 
 permissions:
   contents: read
@@ -39,18 +25,15 @@ jobs:
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
+      # kver -> Landlock ABI: 5.13=v1 5.19=v2 6.2=v3 6.7=v4 6.10=v5 6.12=v6 6.15=v7
+      #                       7.0=v8 7.1=v9. 7.1 not yet on Ubuntu mainline.
       matrix:
-        # image-versions confirmed present in quay.io/lvh-images/kind. Exact 6.7(v4)
-        # and 6.10(v5) aren't published, but 6.12 (v6) cumulatively exercises the
-        # network (v4) and ioctl (v5) rights, so the v4+ enforcement battery runs there.
         include:
-          - { name: "no-landlock (5.4)",   image_version: "5.4-20260603.072225",      expect_abi: "0" }
-          - { name: "v1 FS (5.15)",        image_version: "5.15-20260603.072225",     expect_abi: "1" }
-          - { name: "v2 REFER (6.1)",      image_version: "6.1-20260603.072225",      expect_abi: "2" }
-          - { name: "v3 TRUNCATE (6.6)",   image_version: "6.6-20260603.072225",      expect_abi: "3" }
-          - { name: "v6 scope+net (6.12)", image_version: "6.12-20260603.072225",     expect_abi: "6" }
-          - { name: "v7 logging (6.18)",   image_version: "6.18-20260603.072225",     expect_abi: "7" }
-          - { name: "newest (bpf-next)",   image_version: "bpf-next-20260603.072225", expect_abi: ""  }
+          - { name: "no-landlock (5.10)", kver: "5.10", expect_abi: "0" }
+          - { name: "v1 FS (5.13)",       kver: "5.13", expect_abi: "1" }
+          - { name: "v4 network (6.7)",   kver: "6.7",  expect_abi: "4" }
+          - { name: "v6 scope+net (6.12)", kver: "6.12", expect_abi: "6" }
+          - { name: "v8 tsync (7.0)",     kver: "7.0",  expect_abi: "8" }
     name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v5
@@ -64,16 +47,30 @@ jobs:
       - name: Build conformance binary (host)
         run: odin build tools/abi-conformance -out:abi-conformance
 
-      - name: Run conformance under kernel ${{ matrix.image_version }}
-        uses: cilium/little-vm-helper@5ae749011735fd77f30f38add52f1a53a5568671 # v0.0.30
-        with:
-          image: kind
-          image-version: ${{ matrix.image_version }}
-          host-mount: ./
-          install-dependencies: "true"
-          cmd: |
-            echo "uname: \$(uname -r)"
-            echo "lsm: \$(cat /sys/kernel/security/lsm 2>/dev/null || echo '<none>')"
-            echo "landlock-config:"; grep -i landlock /boot/config-\$(uname -r) 2>/dev/null || echo "  (config-\$(uname -r) absent or no LANDLOCK)"
-            export LANDLOCK_EXPECT_ABI='${{ matrix.expect_abi }}'
-            /host/abi-conformance
+      - name: Install virtme-ng + qemu
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 virtme-ng
+
+      - name: Fetch Ubuntu mainline kernel ${{ matrix.kver }}
+        id: kernel
+        run: |
+          set -euo pipefail
+          base="https://kernel.ubuntu.com/mainline/v${{ matrix.kver }}/amd64/"
+          deb=$(curl -fsSL "$base" | grep -oE 'linux-image-unsigned-[^"]+_amd64\.deb' | head -1)
+          echo "fetching $deb"
+          curl -fsSL -o kernel.deb "$base$deb"
+          dpkg-deb -x kernel.deb kernelpkg          # vmlinuz + /lib/modules/<ver>
+          echo "vmlinuz=$(find kernelpkg -name 'vmlinuz-*' -type f | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Run conformance under ${{ matrix.kver }}
+        run: |
+          # Force landlock into the LSM stack (Ubuntu compiles it in); unknown/unbuilt
+          # LSMs in the list are ignored, so this is safe across versions.
+          vng -r "${{ steps.kernel.outputs.vmlinuz }}" \
+              --rwdir="$PWD" \
+              --append "lsm=landlock,capability,yama,apparmor,bpf" \
+              -- sh -c 'echo "lsm: $(cat /sys/kernel/security/lsm 2>/dev/null || echo none)"; LANDLOCK_EXPECT_ABI=${{ matrix.expect_abi }} ./abi-conformance; echo $? > conf.rc' || true
+          rc="$(cat conf.rc 2>/dev/null || echo 99)"; rm -f conf.rc
+          echo "conformance exit code: $rc"
+          test "$rc" = 0
