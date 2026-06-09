@@ -1,11 +1,12 @@
 name: Kernel matrix (ABI conformance)
 
-# Real-kernel Landlock conformance across a representative set of kernel versions.
-# Boots each kernel under virtme-ng (host rootfs + chosen kernel, KVM-accelerated)
-# and runs tools/abi-conformance, asserting the kernel reports the expected ABI and
-# that real enforcement / the unavailable-or-disabled paths behave.
+# Real-kernel Landlock conformance across a representative set of kernel versions,
+# using Cilium little-vm-helper (LVH) prebuilt VM images. Each job boots one kernel,
+# mounts the repo at /host, and runs the host-built tools/abi-conformance binary,
+# asserting the expected ABI (where known) and that real enforcement / the
+# unavailable paths behave.
 #
-# Kept OFF the hot push/PR path — it is slow and uses nested virtualization:
+# Kept OFF the hot push/PR path — slow, uses nested virtualization:
 on:
   workflow_dispatch:
   schedule:
@@ -14,12 +15,18 @@ on:
     types: [labeled]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UNVERIFIED SCAFFOLD. The "Fetch kernel" step is the part to validate/iterate on
-# in CI: each kernel image MUST have CONFIG_SECURITY_LANDLOCK=y *and* landlock in
-# the active LSM stack. The job logs `/sys/kernel/security/lsm` inside the VM so the
-# first runs show whether landlock is present. If an Ubuntu-mainline kernel lacks
-# landlock in its default lsm=, pass `--append "lsm=...,landlock"` (vng) or switch
-# that row to a build-with-config fallback / a little-vm-helper image.
+# UNVERIFIED until first CI runs. Two things to confirm from the job logs:
+#  1. The exact LVH image-version tags below exist (catalog: quay.io/lvh-images;
+#     tags look like "6.6-main" or dated "5.15-20260106.135428" — pin dated tags
+#     for reproducibility once confirmed).
+#  2. Each image actually has Landlock in its active LSM stack. Every job prints
+#     `/sys/kernel/security/lsm`; if a >=5.13 kernel reports abi=0, that image was
+#     built without landlock in CONFIG_LSM and the row needs a different image.
+#
+# kernel -> Landlock ABI: 5.13=v1 5.19=v2 6.2=v3 6.7=v4 6.10=v5 6.12=v6 6.15=v7
+#                         7.0=v8 7.1=v9. expect_abi is left "" (no assertion) where
+# the LVH kernel's exact ABI isn't pinned; the binary still probes + runs the
+# enforcement battery for whatever ABI it finds.
 # ─────────────────────────────────────────────────────────────────────────────
 
 permissions:
@@ -27,25 +34,20 @@ permissions:
 
 jobs:
   conformance:
-    # Only run the labeled trigger when the label is exactly "kernel-matrix".
     if: github.event_name != 'pull_request' || github.event.label.name == 'kernel-matrix'
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        # kver -> expect_abi mapping (Landlock ABI landed in):
-        #   5.13=v1  5.19=v2  6.2=v3  6.7=v4  6.10=v5  6.12=v6  6.15=v7  7.0=v8  7.1=v9
-        # v8/v9 rows are commented out until 7.0/7.1 kernels are available from the
-        # chosen source; add them then.
         include:
-          - { name: "no-landlock (pre-5.13)", kver: "5.10",  expect_abi: 0, mode: unavailable }
-          - { name: "lsm-disabled",           kver: "6.12",  expect_abi: 0, mode: lsm_off }
-          - { name: "v1 FS",                  kver: "5.13",  expect_abi: 1, mode: enforce }
-          - { name: "v4 network",             kver: "6.7",   expect_abi: 4, mode: enforce }
-          - { name: "v6 scope",               kver: "6.12",  expect_abi: 6, mode: enforce }
-          - { name: "v7 logging (newest)",    kver: "6.15",  expect_abi: 7, mode: enforce }
-          # - { name: "v8 tsync",  kver: "7.0", expect_abi: 8, mode: enforce }
-          # - { name: "v9 newest", kver: "7.1", expect_abi: 9, mode: enforce }
+          - { name: "no-landlock (5.4)", image_version: "5.4-main",      expect_abi: "0" }
+          - { name: "v1 FS (5.15)",      image_version: "5.15-main",     expect_abi: "1" }
+          - { name: "v2 REFER (6.1)",    image_version: "6.1-main",      expect_abi: "2" }
+          - { name: "v3 TRUNCATE (6.6)", image_version: "6.6-main",      expect_abi: "3" }
+          - { name: "newest (bpf-next)", image_version: "bpf-next-main", expect_abi: ""  }
+          # Add once the LVH catalog/tags are confirmed (gives v4..v9 coverage):
+          # - { name: "v4 network (6.7)",  image_version: "6.7-main",  expect_abi: "4" }
+          # - { name: "v6 scope (6.12)",   image_version: "6.12-main", expect_abi: "6" }
     name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v4
@@ -59,34 +61,14 @@ jobs:
       - name: Build conformance binary (host)
         run: odin build tools/abi-conformance -out:abi-conformance
 
-      - name: Install virtme-ng + qemu
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 virtme-ng
-          # KVM acceleration (GitHub Linux runners expose /dev/kvm)
-          sudo chmod 0666 /dev/kvm || true
-
-      - name: Fetch kernel (VALIDATE — see header)
-        id: kernel
-        run: |
-          set -euo pipefail
-          ver="${{ matrix.kver }}"
-          base="https://kernel.ubuntu.com/mainline/v${ver}/amd64/"
-          deb=$(curl -fsSL "$base" | grep -oE 'linux-image-unsigned-[^"]+_amd64\.deb' | head -1)
-          echo "downloading $base$deb"
-          curl -fsSL -o k.deb "$base$deb"
-          dpkg-deb -x k.deb kpkg
-          vmlinuz=$(find kpkg -name 'vmlinuz-*' | head -1)
-          echo "vmlinuz=$vmlinuz" >> "$GITHUB_OUTPUT"
-
-      - name: Run conformance under kernel ${{ matrix.kver }}
-        run: |
-          set -euo pipefail
-          append=""
-          if [ "${{ matrix.mode }}" = "lsm_off" ]; then
-            append='--append lsm=capability,yama'   # landlock omitted from the LSM stack
-          fi
-          # Log the active LSM stack, then run the probe with the expected ABI.
-          vng -r "${{ steps.kernel.outputs.vmlinuz }}" $append -- \
-            sh -c 'echo "lsm: $(cat /sys/kernel/security/lsm)"; \
-                   LANDLOCK_EXPECT_ABI=${{ matrix.expect_abi }} ./abi-conformance'
+      - name: Run conformance under kernel ${{ matrix.image_version }}
+        uses: cilium/little-vm-helper@main # TODO: pin to a reviewed commit SHA
+        with:
+          image: base
+          image-version: ${{ matrix.image_version }}
+          host-mount: ./
+          install-dependencies: "true"
+          cmd: |
+            echo "lsm: \$(cat /sys/kernel/security/lsm 2>/dev/null || echo '<none>')"
+            export LANDLOCK_EXPECT_ABI='${{ matrix.expect_abi }}'
+            /host/abi-conformance
