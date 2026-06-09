@@ -29,7 +29,11 @@ jobs:
       #                       7.0=v8 7.1=v9. 7.1 not yet on Ubuntu mainline.
       matrix:
         include:
+          - { name: "no-landlock (5.10)",  kver: "5.10", expect_abi: "0" }
+          - { name: "v1 FS (5.13)",        kver: "5.13", expect_abi: "1" }
+          - { name: "v4 network (6.7)",    kver: "6.7",  expect_abi: "4" }
           - { name: "v6 scope+net (6.12)", kver: "6.12", expect_abi: "6" }
+          - { name: "v8 tsync (7.0)",      kver: "7.0",  expect_abi: "8" }
     name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v5
