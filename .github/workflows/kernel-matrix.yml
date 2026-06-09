@@ -72,6 +72,8 @@ jobs:
           host-mount: ./
           install-dependencies: "true"
           cmd: |
+            echo "uname: \$(uname -r)"
             echo "lsm: \$(cat /sys/kernel/security/lsm 2>/dev/null || echo '<none>')"
+            echo "landlock-config:"; grep -i landlock /boot/config-\$(uname -r) 2>/dev/null || echo "  (config-\$(uname -r) absent or no LANDLOCK)"
             export LANDLOCK_EXPECT_ABI='${{ matrix.expect_abi }}'
             /host/abi-conformance
