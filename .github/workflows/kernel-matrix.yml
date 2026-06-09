@@ -53,10 +53,15 @@ jobs:
         run: |
           set -euo pipefail
           base="https://kernel.ubuntu.com/mainline/v${{ matrix.kver }}/amd64/"
-          deb=$(curl -fsSL "$base" | grep -oE 'linux-image-unsigned-[^"]+_amd64\.deb' | head -1)
-          echo "fetching $deb"
-          curl -fsSL -o kernel.deb "$base$deb"
-          dpkg-deb -x kernel.deb kernelpkg          # vmlinuz + /lib/modules/<ver>
+          listing=$(curl -fsSL "$base")
+          # Ubuntu splits the kernel image (vmlinuz) and the modules into separate debs.
+          img=$(echo "$listing" | grep -oE 'linux-image-unsigned-[^"]+_amd64\.deb' | head -1)
+          mod=$(echo "$listing" | grep -oE 'linux-modules-[^"]+_amd64\.deb' | head -1)
+          for d in "$img" "$mod"; do
+            echo "fetching $d"
+            curl -fsSL -o "pkg.deb" "$base$d"
+            dpkg-deb -x pkg.deb kernelpkg
+          done
           # Make the modules discoverable by virtme-ng (it builds an initramfs with
           # the virtio/9p transport modules to mount the host rootfs).
           sudo cp -a kernelpkg/lib/modules/* /lib/modules/
