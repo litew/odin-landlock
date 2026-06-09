@@ -62,7 +62,7 @@ jobs:
         run: odin build tools/abi-conformance -out:abi-conformance
 
       - name: Run conformance under kernel ${{ matrix.image_version }}
-        uses: cilium/little-vm-helper@main # TODO: pin to a reviewed commit SHA
+        uses: cilium/little-vm-helper@5ae749011735fd77f30f38add52f1a53a5568671 # v0.0.30
         with:
           image: base
           image-version: ${{ matrix.image_version }}
