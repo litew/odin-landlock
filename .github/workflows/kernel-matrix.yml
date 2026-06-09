@@ -1,4 +1,4 @@
-name: Kernel matrix (ABI conformance)
+name: Kernel ABI compat. matrix
 
 # Real-kernel Landlock conformance across kernel versions, using Ubuntu mainline
 # kernels (which ship CONFIG_SECURITY_LANDLOCK=y) booted under virtme-ng with the
