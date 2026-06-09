@@ -15,13 +15,12 @@ on:
     types: [labeled]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UNVERIFIED until first CI runs. Two things to confirm from the job logs:
-#  1. The exact LVH image-version tags below exist (catalog: quay.io/lvh-images;
-#     tags look like "6.6-main" or dated "5.15-20260106.135428" — pin dated tags
-#     for reproducibility once confirmed).
-#  2. Each image actually has Landlock in its active LSM stack. Every job prints
-#     `/sys/kernel/security/lsm`; if a >=5.13 kernel reports abi=0, that image was
-#     built without landlock in CONFIG_LSM and the row needs a different image.
+# Tags below are confirmed present in quay.io/lvh-images/kind (the `-main` rolling
+# tags; pin the dated "<ver>-YYYYMMDD.hhmmss" variants for full reproducibility).
+# Still to confirm from the first runs:
+#  - Each image actually has Landlock in its active LSM stack. Every job prints
+#    `/sys/kernel/security/lsm`; if a >=5.13 kernel reports abi=0, that image was
+#    built without landlock in CONFIG_LSM and the row needs a different image.
 #
 # kernel -> Landlock ABI: 5.13=v1 5.19=v2 6.2=v3 6.7=v4 6.10=v5 6.12=v6 6.15=v7
 #                         7.0=v8 7.1=v9. expect_abi is left "" (no assertion) where
@@ -39,15 +38,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # image-versions confirmed present in quay.io/lvh-images/kind. Exact 6.7(v4)
+        # and 6.10(v5) aren't published, but 6.12 (v6) cumulatively exercises the
+        # network (v4) and ioctl (v5) rights, so the v4+ enforcement battery runs there.
         include:
           - { name: "no-landlock (5.4)", image_version: "5.4-main",      expect_abi: "0" }
           - { name: "v1 FS (5.15)",      image_version: "5.15-main",     expect_abi: "1" }
           - { name: "v2 REFER (6.1)",    image_version: "6.1-main",      expect_abi: "2" }
           - { name: "v3 TRUNCATE (6.6)", image_version: "6.6-main",      expect_abi: "3" }
+          - { name: "v6 scope+net (6.12)", image_version: "6.12-main",   expect_abi: "6" }
+          - { name: "v7 logging (6.18)", image_version: "6.18-main",     expect_abi: "7" }
           - { name: "newest (bpf-next)", image_version: "bpf-next-main", expect_abi: ""  }
-          # Add once the LVH catalog/tags are confirmed (gives v4..v9 coverage):
-          # - { name: "v4 network (6.7)",  image_version: "6.7-main",  expect_abi: "4" }
-          # - { name: "v6 scope (6.12)",   image_version: "6.12-main", expect_abi: "6" }
     name: ${{ matrix.name }}
     steps:
       - uses: actions/checkout@v5
@@ -64,7 +65,7 @@ jobs:
       - name: Run conformance under kernel ${{ matrix.image_version }}
         uses: cilium/little-vm-helper@5ae749011735fd77f30f38add52f1a53a5568671 # v0.0.30
         with:
-          image: base
+          image: kind
           image-version: ${{ matrix.image_version }}
           host-mount: ./
           install-dependencies: "true"
