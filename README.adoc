@@ -14,6 +14,11 @@ Use these files in your project:
     └── syscall.odin
 ----
 
+See `examples/main.odin` for a complete, runnable example.
+
+Tested with Odin `dev-2026-05` nightly. The package depends on `core:sys/linux`
+(including a hand-rolled `openat2` wrapper), so pin an Odin version when vendoring.
+
 == Example
 Check `main.odin` file for more complete examples.
 This minimal example shows the basic API flow:
@@ -49,13 +54,13 @@ main :: proc() {
 
 	result := landlock.apply_best_effort(&policy)
 
+	// Status is the coarse outcome; the reason for a Not_Enforced result lives
+	// in result.error.kind.
 	#partial switch result.status {
 	  case .Enforced, .Partially_Enforced:
 		  fmt.printf("landlock active with status %v\n", result.status)
-	  case .Unavailable, .Disabled, .Unsupported_Platform, .Unsupported_Feature:
-		  fmt.printf("landlock not active: %v\n", result.status)
-	  case .Invalid_Policy, .Skipped_For_Test:
-		  fmt.printf("policy not applied: %v\n", result.status)
+	  case .Not_Enforced:
+		  fmt.printf("landlock not active: %v\n", landlock.enum_to_string(result.error.kind))
 	}
 }
 ----
@@ -77,7 +82,7 @@ The read only procs request read and execute style rights only. They do not incl
 Use `allow_rw_dirs`, `allow_rw_files`, or `allow_path` when the process needs write rights.
 
 `allow_path` takes `Path_Options`. By default, paths must exist and match the requested `Path_Kind`.
-`Path_Options{missing = .Ignore}` records an omitted rule when a path is absent. That omitted intent appears in `Policy_Result.omitted_features`, which helps callers inspect best effort outcomes.
+`Path_Options{missing = .Ignore}` records an omitted rule when a path is absent. That omitted intent appears in `Policy_Result.features_omitted`, which helps callers inspect best effort outcomes.
 
 [NOTE]
 ====
@@ -96,9 +101,22 @@ Add IPC restrictions with:
 . `scope_signal`
 . `scope_abstract_unix_socket`
 
-Add optional thread self-restriction flags with:
-. `enable_log_new_exec` - for Landlock's logging to audit subsystem
-. `enable_thread_sync` - for Landlock to track and restrict all threads in the process, not just the current thread that applied the policy
+Add optional `landlock_restrict_self` flags with `handle_flags`, which takes a
+`syscall.Restrict_Self_Flags` set (it *replaces* the set, like `handle_features`):
+
+[source,odin]
+----
+landlock.handle_flags(&policy, {.Log_New_Exec_On, .Tsync})
+----
+
+The flags are:
+
+. `.Log_New_Exec_On` / `.Log_Same_Exec_Off` / `.Log_Subdomains_Off` - control Landlock's audit-logging behaviour.
+. `.Tsync` - make Landlock track and restrict *all* threads in the process, not just the current thread that applied the policy (ABI v8+).
+
+Requested flags are reported back in `Policy_Result.flags_requested`,
+`flags_applied`, and `flags_omitted` (a flag the running kernel does not support is
+dropped at apply and listed in `flags_omitted`; it also fails `apply_strict`).
 
 === Handled set (deny-by-default)
 Policy is *deny-by-default* over a *handled set*: once applied, every access type the running kernel supports is denied unless an
@@ -113,9 +131,9 @@ scoped IPC are all denied by default, and only explicit `allow_*` / `scope_*`
 rules open exceptions. So a policy that only grants filesystem rules still denies
 all networking and IPC scope.
 
-`Logging` and `Thread_Sync` are *not* part of the handled set — they are opt-in
-restrict flags enabled separately via `enable_log_new_exec` / `enable_thread_sync`
-(see below), so they are never handled unless you enable them.
+Logging and thread-sync are *not* part of the handled set — they are opt-in
+`restrict_self` flags requested separately via `handle_flags` (see above), so they
+are never applied unless you request them.
 
 Narrow the handled set with `handle_features` when you only want to restrict some
 distinct types, e.g. filesystem-only sandboxing while leaving other type
@@ -128,29 +146,46 @@ landlock.allow_ro_dirs(&policy, "/usr")
 ----
 
 Types left out of the handled set are not restricted at all. Logging and
-thread-sync (`enable_log_new_exec`, `enable_thread_sync`) restrictions are opt-in features, not
-part of the mandatory handled set.
-By default, restriction of handled set applies only to current thread; `enable_thread_sync` opts into Landlock tracking and restricting all threads in the process.
+thread-sync are opt-in `restrict_self` flags (`handle_flags`), not part of the
+mandatory handled set.
 
-Adding an `allow_*`/`scope_*` rule for a dimension you removed from the handled set (e.g. `handle_features(&policy, {.Filesystem})` followed by `allow_tcp_connect`) is a contradiction: the rule can never take effect. This is caught at apply as a construction error — `Invalid_Policy` with `Rule_For_Unhandled_Feature`, naming the offending dimension in `omitted_features` — rather than being silently dropped or misreported as an ABI gap. Either include the dimension in `handle_features` or remove the rule.
+[WARNING]
+====
+`landlock_restrict_self` restricts only the *calling thread* and its future
+children. If your process has already spawned threads before you call `apply_*`,
+those sibling threads stay **unsandboxed** unless you request `.Tsync`
+(`handle_flags(&policy, {.Tsync})`, ABI v8+). `is_enforced(result)` still reports
+`true` in that case. Apply the policy *before* creating threads, or set `.Tsync`.
+====
+
+Adding an `allow_*`/`scope_*` rule for a dimension you removed from the handled set (e.g. `handle_features(&policy, {.Filesystem})` followed by `allow_tcp_connect`) is a contradiction: the rule can never take effect. This is caught at apply as a construction error — `Invalid_Policy` with `Rule_For_Unhandled_Feature`, naming the offending dimension in `features_omitted` — rather than being silently dropped or misreported as an ABI gap. Either include the dimension in `handle_features` or remove the rule.
 
 Apply constructed policy with `apply_strict` for strict one-to-one ruleset enforcement or call `apply_best_effort` when the program should tolerate older kernels with Landlock ABI < v9.
-Both procs return `Policy_Result` with a typed `Policy_Status`, ABI information, requested features, applied features, omitted features, and error data.
-Use `summary` for a short caller owned string, or `debug_summary` for a caller owned line that includes status, ABI, feature sets, errno, and validation list.
+Both procs return `Policy_Result` with a typed `Policy_Status`, ABI information, requested/applied/omitted feature and flag sets, and error data.
+Use `summary` for a short caller owned string, or `debug_summary` for a caller owned line that includes status, ABI, feature sets, flag sets, errno, and validation list.
 
 == Result statuses
-`Policy_Status` tells the caller what happened after applying the policy:
+`Policy_Status` is the *coarse outcome* — did the requested policy take effect?
 
 [cols="1,2", options="header"]
 |===
 | Status | Explanation
-| `Enforced` | Landlock applied the requested policy restrictions.
-| `Partially_Enforced` | Landlock applied some requested features and omitted others. Only returned by `apply_best_effort`. Check with `applied_features`, `omitted_features`, `abi_requested`, and `abi_used`.
-| `Invalid_Policy` | validation rejected the policy before applying restrictions.
-| `Unsupported_Feature` | the running kernel does not support a feature requested by the policy. Only returned by `apply_strict` (strict mode never allows partial enforcement); `apply_best_effort` returns `Partially_Enforced` when it can enforce some features instead.
-| `Disabled` | the kernel reported Landlock support is disabled (check that `cat /sys/kernel/security/lsm` contains 'landlock' string).
+| `Enforced` | Landlock applied the full requested policy.
+| `Partially_Enforced` | Landlock applied some requested features/flags and omitted others. Only returned by `apply_best_effort`. Inspect `features_applied`, `features_omitted`, `flags_applied`, `flags_omitted`, `abi_requested`, and `abi_used`.
+| `Not_Enforced` | the policy did not take effect. The *reason* is in `Policy_Result.error.kind` (see below).
+|===
+
+The reason for a `Not_Enforced` result lives in `Policy_Result.error.kind` (`Policy_Error_Kind`):
+
+[cols="1,2", options="header"]
+|===
+| `error.kind` | Explanation
+| `Invalid_Policy` | validation rejected the policy before applying restrictions (details in `error.validation`).
+| `Unsupported_Feature` | the running kernel does not support a feature/flag requested by the policy. Only via `apply_strict` (strict mode never allows partial enforcement); `apply_best_effort` returns `Partially_Enforced` instead.
+| `Disabled` | the kernel reported Landlock support is disabled (check that `cat /sys/kernel/security/lsm` contains the 'landlock' string).
 | `Unavailable` | the Landlock syscall path or permission setup failed, or the kernel returned a failure such as missing syscall support.
 | `Unsupported_Platform` | the current target does not provide Linux Landlock syscalls.
+| `Permission_Denied` / `No_New_Privs_Failed` / `Syscall_Failed` / `Allocation_Failed` | a specific apply-time failure; `error.cause` and `error.raw_errno` carry the detail.
 |===
 
 == ABI limits and best effort
@@ -159,7 +194,7 @@ Linux exposes Landlock features by ABI version. This package works with known AB
 `Policy_Result.abi_used` records the effective known ABI used for policy.
 
 Callers should think in terms of policy intent first. For example, "I want to allow read-only access to these directories" rather than "I want to use Landlock ABI v3". The package translates that intent into the best matching ABI version and features supported by the running kernel.
-Best effort never hides lack of enforcement. `apply_best_effort` returns `Unavailable`, `Disabled`, `Unsupported_Platform`, or `Partially_Enforced` when the kernel cannot apply the full requested policy. **!Check the result before trusting the sandbox!**
+Best effort never hides lack of enforcement. `apply_best_effort` returns `Partially_Enforced` (some features/flags dropped) or `Not_Enforced` (with `error.kind` such as `Unavailable`, `Disabled`, or `Unsupported_Platform`) when the kernel cannot apply the full requested policy. **!Check the result before trusting the sandbox!**
 
 `apply_strict`/`apply_best_effort` never abort the process; on failure execution continues *unsandboxed* if you ignore it. The safe default is to **fail fast** — use the `is_enforced` helper:
 
@@ -172,7 +207,7 @@ if !landlock.is_enforced(result) {
 }
 ----
 
-A `Partially_Enforced` result (some features dropped on an older kernel) is a deliberate caller decision: inspect `applied_features`/`omitted_features` and decide whether the reduced policy is acceptable rather than treating it as success.
+A `Partially_Enforced` result (some features dropped on an older kernel) is a deliberate caller decision: inspect `features_applied`/`features_omitted` (and `flags_applied`/`flags_omitted`) and decide whether the reduced policy is acceptable rather than treating it as success.
 
 == Compatibility matrix
 [cols="2,1,1,2,4", options="header"]
@@ -204,7 +239,7 @@ A `Partially_Enforced` result (some features dropped on an older kernel) is a de
 | https://github.com/torvalds/linux/commit/21d52e295ad2[21d52e295ad2] landlock: Add abstract UNIX socket scoping
 
 | Audit logging control
-| v7 | 6.15 | `Restrict_Self_Flag{.Log_Same_Exec, .Log_New_Exec, .Log_Subdomains_Off}`
+| v7 | 6.15 | `Restrict_Self_Flag{.Log_Same_Exec_Off, .Log_New_Exec_On, .Log_Subdomains_Off}`
 | https://github.com/torvalds/linux/commit/12bfcda73ac2[12bfcda73ac2] landlock: Add LANDLOCK_RESTRICT_SELF_LOG_*_EXEC_* flags
 
 | Thread sync
