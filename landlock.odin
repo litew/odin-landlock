@@ -159,7 +159,16 @@ Path_Missing_Behavior :: enum {
 }
 
 Path_Symlink_Behavior :: enum {
-	// Follow checks the target type; Reject treats the link itself as invalid.
+	// Follow (the default) resolves symlinks and validates the target's type. It
+	// leaves a narrow validate->apply TOCTOU window: a local attacker who can swap
+	// a path component between the build-time stat and the apply-time open could
+	// make the rule bind a different inode than validated.
+	//
+	// Reject resolves with openat2(RESOLVE_NO_SYMLINKS): no path component may be a
+	// symlink at apply time, closing that window. Use it for paths whose parent
+	// directories are untrusted/attacker-writable. Note that many standard system
+	// directories are symlinks on modern (usr-merge) Linux (/bin, /lib, /sbin,
+	// /var/run), so .Reject rejects them with Symlink_Rejected.
 	Follow,
 	Reject,
 }

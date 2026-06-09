@@ -84,6 +84,19 @@ Use `allow_rw_dirs`, `allow_rw_files`, or `allow_path` when the process needs wr
 `allow_path` takes `Path_Options`. By default, paths must exist and match the requested `Path_Kind`.
 `Path_Options{missing = .Ignore}` records an omitted rule when a path is absent. That omitted intent appears in `Policy_Result.features_omitted`, which helps callers inspect best effort outcomes.
 
+=== Symlinks and the TOCTOU window
+`Path_Options.symlink` defaults to `.Follow`: symlinks are resolved and the
+target's type is validated. This leaves a narrow validate→apply window — a *local*
+attacker who can swap a path component between the build-time `stat` and the
+apply-time `open` could make the rule bind a different inode than was validated.
+
+For paths whose parent directories are untrusted or attacker-writable, use
+`Path_Options{symlink = .Reject}`, which resolves with `openat2(RESOLVE_NO_SYMLINKS)`
+so *no* path component may be a symlink at apply time, closing the window. Be aware
+that many standard system directories are symlinks on modern (usr-merge) Linux —
+`/bin`, `/lib`, `/sbin`, `/var/run` — so `.Reject` rejects those with
+`Symlink_Rejected`; allow their real targets (under `/usr`, `/run`) instead.
+
 [NOTE]
 ====
 Two `allow_path` constraints worth knowing before you build access rules:
