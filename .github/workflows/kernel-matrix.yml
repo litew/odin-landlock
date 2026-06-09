@@ -67,8 +67,10 @@ jobs:
             dpkg-deb -x pkg.deb kernelpkg
           done
           # Make the modules discoverable by virtme-ng (it builds an initramfs with
-          # the virtio/9p transport modules to mount the host rootfs).
-          sudo cp -a kernelpkg/lib/modules/* /lib/modules/
+          # the virtio/9p transport modules to mount the host rootfs). Path-agnostic:
+          # older debs ship lib/modules, newer (usr-merged) ship usr/lib/modules.
+          moddir=$(find kernelpkg -type d -path '*lib/modules' | head -1)
+          sudo cp -a "$moddir"/* /lib/modules/
           echo "vmlinuz=$(find kernelpkg -name 'vmlinuz-*' -type f | head -1)" >> "$GITHUB_OUTPUT"
 
       - name: Run conformance under ${{ matrix.kver }}
