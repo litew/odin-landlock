@@ -50,7 +50,7 @@ jobs:
           # - { name: "v6 scope (6.12)",   image_version: "6.12-main", expect_abi: "6" }
     name: ${{ matrix.name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Odin (latest monthly release)
         uses: laytan/setup-odin@v2
