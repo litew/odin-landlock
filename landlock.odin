@@ -41,6 +41,7 @@ import "core:mem"
 import "core:os"
 import "core:reflect"
 import "core:strings"
+import "core:sys/linux"
 import "core:sys/posix"
 import "syscall"
 
@@ -1104,14 +1105,14 @@ apply_result_for_errno :: proc "contextless" (
 	raw_errno: i32,
 ) -> Policy_Result {
 	if cause == .ABI_Probe {
-		if raw_errno == 38 {
+		if raw_errno == i32(linux.Errno.ENOSYS) {
 			return policy_result_unavailable(raw_errno)
 		}
-		if raw_errno == 95 {
+		if raw_errno == i32(linux.Errno.EOPNOTSUPP) {
 			return policy_result_disabled(raw_errno)
 		}
 	}
-	if raw_errno == 1 {
+	if raw_errno == i32(linux.Errno.EPERM) {
 		return policy_result_permission_denied_for(cause, raw_errno)
 	}
 	return policy_result_syscall_failed(cause, raw_errno)
