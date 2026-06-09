@@ -46,7 +46,11 @@ main :: proc() {
 		os.exit(1)
 	}
 
-	_, err := os.create("/tmp/secret")
+	// Create a file we deliberately do NOT allow, to prove the sandbox denies it
+	// after apply. Close it now; if creation fails the proof is just weaker.
+	if handle, cerr := os.create("/tmp/secret"); cerr == nil {
+		os.close(handle)
+	}
 
 	if err := landlock.allow_rw_dirs(&policy, "/tmp/work"); err.kind != .None {
 		fmt.eprintln("allow_rw_dirs:", landlock.enum_to_string(err.kind))
@@ -78,16 +82,16 @@ main :: proc() {
 	stdout := table.stdio_writer()
 	tbl := table.init(&table.Table{})
 	table.caption(tbl, "=== Landlock self-restriction result ===")
-	table.padding(tbl, 1, 0)
-	table.row(tbl, "Status", ":", landlock.enum_to_string(result.status))
-	table.row(tbl, "ABI requested, ver.", ":", result.abi_requested)
-	table.row(tbl, "ABI used, ver.", ":", result.abi_used)
-	table.row(tbl, "Features requested", ":", fmt.tprintf("%w", result.features_requested))
-	table.row(tbl, "Features applied", ":", fmt.tprintf("%w", result.features_applied))
-	table.row(tbl, "Features omitted", ":", fmt.tprintf("%w", result.features_omitted))
-	table.row(tbl, "Flags requested", ":", fmt.tprintf("%w", result.flags_requested))
-	table.row(tbl, "Flags applied", ":", fmt.tprintf("%w", result.flags_applied))
-	table.row(tbl, "Flags omitted", ":", fmt.tprintf("%w", result.flags_omitted))
+	table.padding(tbl, 0, 0)
+	table.row(tbl, "Status", " : ", landlock.enum_to_string(result.status))
+	table.row(tbl, "ABI requested, ver.", " : ", result.abi_requested)
+	table.row(tbl, "ABI used, ver.", " : ", result.abi_used)
+	table.row(tbl, "Features requested", " : ", fmt.tprintf("%w", result.features_requested))
+	table.row(tbl, "Features applied", " : ", fmt.tprintf("%w", result.features_applied))
+	table.row(tbl, "Features omitted", " : ", fmt.tprintf("%w", result.features_omitted))
+	table.row(tbl, "Flags requested", " : ", fmt.tprintf("%w", result.flags_requested))
+	table.row(tbl, "Flags applied", " : ", fmt.tprintf("%w", result.flags_applied))
+	table.row(tbl, "Flags omitted", " : ", fmt.tprintf("%w", result.flags_omitted))
 	table.build(tbl, table.unicode_width_proc)
 	for row in 0 ..< tbl.nr_rows {
 		for col in 0 ..< tbl.nr_cols {

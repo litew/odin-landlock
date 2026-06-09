@@ -708,7 +708,7 @@ path_validation_stat :: proc(
 }
 
 @(private)
-policy_note_path_features :: proc(policy: ^Policy, access: Path_Access) {
+policy_note_path_features :: proc(policy: ^Policy) {
 	policy.features_requested += Feature_Set{.Filesystem}
 }
 
@@ -811,7 +811,7 @@ record_omitted_path :: proc(
 		   omitted.path == path &&
 		   omitted.access == access &&
 		   omitted.reason == reason {
-			policy_note_path_features(policy, access)
+			policy_note_path_features(policy)
 			return policy_error_none()
 		}
 	}
@@ -830,7 +830,7 @@ record_omitted_path :: proc(
 		return policy_error_allocation(alloc_err)
 	}
 
-	policy_note_path_features(policy, access)
+	policy_note_path_features(policy)
 	return policy_error_none()
 }
 
@@ -872,7 +872,7 @@ allow_path :: proc(
 			rule.access += access
 			// Keep the stricter open: reject symlinks if any rule for this path did.
 			rule.no_follow = rule.no_follow || no_follow
-			policy_note_path_features(policy, rule.access)
+			policy_note_path_features(policy)
 			return policy_error_none()
 		}
 	}
@@ -891,7 +891,7 @@ allow_path :: proc(
 		return policy_error_allocation(alloc_err)
 	}
 
-	policy_note_path_features(policy, access)
+	policy_note_path_features(policy)
 	return policy_error_none()
 }
 
