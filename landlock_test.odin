@@ -1600,3 +1600,20 @@ test_oversized_path_rejected :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(policy.rules_path), 0)
 }
 
+@(test)
+test_stat_failure_is_syscall_error_not_wrong_path_type :: proc(t: ^testing.T) {
+	// A stat failure other than Not_Exist — here one component over NAME_MAX,
+	// ENAMETOOLONG — must surface as Syscall_Failed with the raw errno. Only a
+	// genuine kind/type mismatch reports Wrong_Path_Type.
+	policy: Policy
+	expect_policy_ok(t, init(&policy), "init")
+	defer cleanup(&policy)
+	long := strings.repeat("a", 300, context.temp_allocator)
+	err := allow_path(&policy, .Directory, long, path_access_ro_dir)
+	testing.expect_value(t, err.kind, Policy_Error_Kind.Syscall_Failed)
+	testing.expect_value(t, err.cause, Policy_Error_Cause.Validation)
+	testing.expect(t, err.raw_errno != 0, "stat errno should be preserved")
+	testing.expect_value(t, err.validation, Policy_Validation_Failure.None)
+	testing.expect_value(t, len(policy.rules_path), 0)
+}
+

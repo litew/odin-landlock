@@ -668,7 +668,7 @@ path_validation_stat :: proc(
 			if link_err == .Not_Exist {
 				return false, policy_error_invalid_policy(.Missing_Path)
 			}
-			return false, policy_error_invalid_policy(.Wrong_Path_Type)
+			return false, policy_error_errno(.Syscall_Failed, .Validation, raw_errno_from_os_error(link_err))
 		}
 		defer os.file_info_delete(link_info, context.allocator)
 		if link_info.type == .Symlink {
@@ -688,7 +688,7 @@ path_validation_stat :: proc(
 		if stat_err == .Not_Exist {
 			return false, policy_error_invalid_policy(.Missing_Path)
 		}
-		return false, policy_error_invalid_policy(.Wrong_Path_Type)
+		return false, policy_error_errno(.Syscall_Failed, .Validation, raw_errno_from_os_error(stat_err))
 	}
 	defer os.file_info_delete(info, context.allocator)
 	if !path_kind_matches_file_type(kind, info.type) {

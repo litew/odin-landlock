@@ -202,7 +202,7 @@ The reason for a `Not_Enforced` result lives in `Policy_Result.error.kind` (`Pol
 | `Disabled` | the kernel reported Landlock support is disabled (check that `cat /sys/kernel/security/lsm` contains the 'landlock' string).
 | `Unavailable` | the Landlock syscall path or permission setup failed, or the kernel returned a failure such as missing syscall support.
 | `Unsupported_Platform` | the current target does not provide Linux Landlock syscalls.
-| `Permission_Denied` / `No_New_Privs_Failed` / `Syscall_Failed` / `Allocation_Failed` | a specific apply-time failure; `error.cause` and `error.raw_errno` carry the detail.
+| `Permission_Denied` / `No_New_Privs_Failed` / `Syscall_Failed` / `Allocation_Failed` | a specific validation or apply-time failure; `error.cause` and `error.raw_errno` carry the detail.
 |===
 
 == ABI limits and best effort
