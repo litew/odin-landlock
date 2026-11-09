@@ -880,27 +880,6 @@ test_apply_probe_eopnotsupp_is_disabled :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_non_linux_apply_reports_unsupported_platform :: proc(t: ^testing.T) {
-	when ODIN_OS != .Linux {
-		policy: Policy
-		expect_policy_ok(t, init(&policy), "init")
-		defer cleanup(&policy)
-		expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
-
-		result := apply_best_effort(&policy)
-		testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
-		testing.expect_value(t, result.error.kind, Policy_Error_Kind.Unsupported_Platform)
-		testing.expect_value(t, result.abi_requested, 0)
-		testing.expect_value(t, result.abi_used, 0)
-		testing.expect_value(t, result.features_applied, Feature_Set{})
-		testing.expect_value(t, result.features_requested, policy.features_requested)
-		testing.expect_value(t, result.features_omitted, policy.features_requested)
-	} else {
-		testing.expect(t, true, "non-Linux unsupported-platform check is target-gated")
-	}
-}
-
-@(test)
 test_best_effort_enosys_reports_unavailable :: proc(t: ^testing.T) {
 	saved_ops := use_fake_apply_ops()
 	defer apply_ops = saved_ops
