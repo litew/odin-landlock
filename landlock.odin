@@ -471,7 +471,22 @@ debug_summary :: proc(
 	summary: string,
 	err: Policy_Error,
 ) {
-	builder, alloc_err := strings.builder_make_len_cap(0, DEBUG_SUMMARY_CAP, allocator)
+	return debug_summary_with_cap(result, DEBUG_SUMMARY_CAP, allocator)
+}
+
+// debug_summary_with_cap renders the same report as debug_summary under an
+// explicit capacity, so tests can drive the over-cap failure path (the real
+// bound sits far above any renderable line).
+@(private)
+debug_summary_with_cap :: proc(
+	result: Policy_Result,
+	cap: int,
+	allocator := context.allocator,
+) -> (
+	summary: string,
+	err: Policy_Error,
+) {
+	builder, alloc_err := strings.builder_make_len_cap(0, cap, allocator)
 	if alloc_err != nil {
 		return "", policy_error_allocation(alloc_err)
 	}
@@ -514,7 +529,7 @@ debug_summary :: proc(
 	// builder either grew (our bound was wrong) or sbprintf hit an allocation
 	// failure and truncated — either way, fail rather than return a partial line.
 	summary = strings.to_string(builder)
-	if len(summary) >= DEBUG_SUMMARY_CAP {
+	if len(summary) >= cap {
 		strings.builder_destroy(&builder)
 		return "", policy_error_allocation(.Out_Of_Memory)
 	}

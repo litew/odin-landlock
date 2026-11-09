@@ -254,6 +254,23 @@ test_policy_debug_summary_allocation_failure :: proc(t: ^testing.T) {
 	testing.expect_value(t, err.allocator_error, mem.Allocator_Error.Out_Of_Memory)
 }
 
+@(test)
+test_policy_debug_summary_fails_instead_of_truncating_over_cap :: proc(t: ^testing.T) {
+	// The public bound (DEBUG_SUMMARY_CAP) sits far above any renderable line;
+	// drive the over-cap path through the private seam with a tiny cap. The
+	// contract is fail-loudly, never return a clipped security summary, and
+	// leak nothing.
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+
+	summary, err := debug_summary_with_cap(enforced_result(9, {.Filesystem}), 16, mem.tracking_allocator(&track))
+	testing.expect(t, summary == "", "over-cap summary must return an empty string")
+	testing.expect_value(t, err.kind, Policy_Error_Kind.Allocation_Failed)
+	testing.expect_value(t, err.allocator_error, mem.Allocator_Error.Out_Of_Memory)
+	testing.expect_value(t, len(track.allocation_map), 0)
+}
+
 
 expect_policy_ok :: proc(t: ^testing.T, err: Policy_Error, msg: string) {
 	testing.expectf(t, err.kind == .None, "%s: got %v", msg, err.kind)
