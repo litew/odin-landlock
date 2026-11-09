@@ -286,7 +286,7 @@ test_policy_builds_filesystem_helpers :: proc(t: ^testing.T) {
 	write_test_file(t, file_path)
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/usr", "/bin"), "allow_ro_dirs")
@@ -307,7 +307,7 @@ test_policy_builds_filesystem_helpers :: proc(t: ^testing.T) {
 @(test)
 test_policy_builds_custom_path_with_resolve_unix :: proc(t: ^testing.T) {
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 
 	access := Path_Access{.Read_Dir, .Resolve_Unix}
@@ -322,7 +322,7 @@ test_policy_builds_custom_path_with_resolve_unix :: proc(t: ^testing.T) {
 @(test)
 test_policy_builds_network_scope_logging_and_tsync :: proc(t: ^testing.T) {
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 
 	expect_policy_ok(t, allow_tcp_connect(&policy, 53), "allow_tcp_connect")
@@ -361,7 +361,7 @@ test_policy_builder_validation_errors_are_typed :: proc(t: ^testing.T) {
 	testing.expect_value(t, err.cause, Policy_Error_Cause.Validation)
 	testing.expect_value(t, err.validation, Policy_Validation_Failure.Policy_Not_Initialized)
 
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 
 	err = allow_path(&policy, .Directory, "", Path_Access{.Read_Dir})
@@ -411,7 +411,7 @@ test_missing_path_default_and_ignore_option :: proc(t: ^testing.T) {
 	defer delete(missing_path)
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 
 	err := allow_ro_files(&policy, missing_path)
@@ -452,7 +452,7 @@ test_path_type_validation_and_symlink_policy :: proc(t: ^testing.T) {
 	write_test_file(t, file_path)
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 
 	err := allow_path(&policy, .Directory, file_path, path_access_ro_dir)
@@ -494,7 +494,7 @@ test_duplicate_and_overlapping_path_rules_are_deterministic :: proc(t: ^testing.
 	defer mem.tracking_allocator_destroy(&track)
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy, mem.tracking_allocator(&track)), "policy_init")
+	expect_policy_ok(t, init(&policy, mem.tracking_allocator(&track)), "init")
 	expect_policy_ok(t, allow_ro_dirs(&policy, temp_dir), "allow_ro_dirs")
 	expect_policy_ok(t, allow_ro_dirs(&policy, temp_dir), "duplicate allow_ro_dirs")
 	testing.expect_value(t, len(policy.rules_path), 1)
@@ -520,7 +520,7 @@ test_refer_unsupported_abi_is_omitted :: proc(t: ^testing.T) {
 	fake_state.abi = 1
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_path(&policy, .Directory, "/tmp", Path_Access{.Read_Dir, .Refer}), "allow_path refer")
 
@@ -536,7 +536,7 @@ test_refer_unsupported_abi_is_omitted :: proc(t: ^testing.T) {
 @(test)
 test_policy_builder_allocation_failure_is_typed :: proc(t: ^testing.T) {
 	policy: Policy
-	expect_policy_ok(t, init(&policy, failing_allocator()), "policy_init")
+	expect_policy_ok(t, init(&policy, failing_allocator()), "init")
 	defer cleanup(&policy)
 
 	err := allow_path(&policy, .Directory, "/tmp", Path_Access{.Read_Dir})
@@ -553,7 +553,7 @@ test_policy_allocator_copies_and_frees_paths :: proc(t: ^testing.T) {
 
 	allocator := mem.tracking_allocator(&track)
 	policy: Policy
-	expect_policy_ok(t, init(&policy, allocator), "policy_init")
+	expect_policy_ok(t, init(&policy, allocator), "init")
 
 	caller_path := "/tmp"
 	expect_policy_ok(t, allow_ro_dirs(&policy, caller_path), "allow_ro_dirs")
@@ -573,7 +573,7 @@ test_policy_cleanup_reset_safe_and_double_cleanup_harmless :: proc(t: ^testing.T
 	defer mem.tracking_allocator_destroy(&track)
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy, mem.tracking_allocator(&track)), "policy_init")
+	expect_policy_ok(t, init(&policy, mem.tracking_allocator(&track)), "init")
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 	cleanup(&policy)
 
@@ -772,7 +772,7 @@ test_deny_all_policy_without_rules_is_enforced :: proc(t: ^testing.T) {
 	fake_state.abi = 9
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 
 	// No allow rules: everything in the handled set is denied by default.
@@ -790,7 +790,7 @@ test_apply_success_uses_fake_flow_and_closes_fds :: proc(t: ^testing.T) {
 	defer apply_ops = saved_ops
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
@@ -818,7 +818,7 @@ test_apply_positive_ruleset_fd_is_not_error :: proc(t: ^testing.T) {
 	fake_state.ruleset_fd = 7
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -834,7 +834,7 @@ test_apply_probe_enosys_is_unavailable :: proc(t: ^testing.T) {
 	fake_state.probe_errno = 38
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -852,7 +852,7 @@ test_apply_probe_eopnotsupp_is_disabled :: proc(t: ^testing.T) {
 	fake_state.probe_errno = 95
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -866,7 +866,7 @@ test_apply_probe_eopnotsupp_is_disabled :: proc(t: ^testing.T) {
 test_non_linux_apply_reports_unsupported_platform :: proc(t: ^testing.T) {
 	when ODIN_OS != .Linux {
 		policy: Policy
-		expect_policy_ok(t, init(&policy), "policy_init")
+		expect_policy_ok(t, init(&policy), "init")
 		defer cleanup(&policy)
 		expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -890,7 +890,7 @@ test_best_effort_enosys_reports_unavailable :: proc(t: ^testing.T) {
 	fake_state.probe_errno = 38
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 	expect_policy_ok(t, allow_tcp_connect(&policy, 443), "allow_tcp_connect")
@@ -926,7 +926,7 @@ test_best_effort_eopnotsupp_reports_disabled :: proc(t: ^testing.T) {
 	fake_state.probe_errno = 95
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -954,7 +954,7 @@ test_create_e2big_is_syscall_failure :: proc(t: ^testing.T) {
 	fake_state.create_errno = 7
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -971,7 +971,7 @@ test_add_rule_failure_closes_open_fd :: proc(t: ^testing.T) {
 	fake_state.add_path_errno = 5
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -990,7 +990,7 @@ test_add_rule_eperm_preserves_add_rule_cause :: proc(t: ^testing.T) {
 	fake_state.add_path_errno = 1
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -1009,7 +1009,7 @@ test_prctl_failure_closes_all_fds :: proc(t: ^testing.T) {
 	fake_state.prctl_errno = 1
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -1028,7 +1028,7 @@ test_apply_eperm_is_permission_denied_and_closes_ruleset :: proc(t: ^testing.T) 
 	fake_state.apply_errno = 1
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -1047,7 +1047,7 @@ test_best_effort_omits_unsupported_feature_but_applies_supported_rules :: proc(t
 	fake_state.abi = 1
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
@@ -1076,7 +1076,7 @@ test_best_effort_full_enforcement_debug_summary :: proc(t: ^testing.T) {
 	fake_state.abi = 9
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 
@@ -1104,7 +1104,7 @@ test_best_effort_future_abi_999_uses_known_max :: proc(t: ^testing.T) {
 	fake_state.abi = 999
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_path(&policy, .Directory, "/tmp", Path_Access{.Read_Dir, .Resolve_Unix}), "allow_path resolve unix")
 	expect_policy_ok(t, allow_tcp_bind(&policy, 0), "allow_tcp_bind")
@@ -1152,7 +1152,7 @@ test_best_effort_omitted_only_policy_is_not_enforced :: proc(t: ^testing.T) {
 	defer apply_ops = saved_ops
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_path(&policy, .File, missing_path, path_access_ro_file, Path_Options{missing = .Ignore}), "allow missing ignore")
 
@@ -1185,7 +1185,7 @@ test_network_options_abi3_vs_abi4 :: proc(t: ^testing.T) {
 	fake_state.abi = 3
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_tcp_bind(&policy, 0), "allow_tcp_bind zero")
 	expect_policy_ok(t, allow_tcp_connect(&policy, 443), "allow_tcp_connect")
@@ -1216,7 +1216,7 @@ test_scope_options_abi5_vs_abi6 :: proc(t: ^testing.T) {
 	fake_state.abi = 5
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, scope_signal(&policy), "scope_signal")
 	expect_policy_ok(t, scope_abstract_unix_socket(&policy), "scope_abstract_unix_socket")
@@ -1243,7 +1243,7 @@ test_scope_rejects_exception_rule :: proc(t: ^testing.T) {
 	fake_state.abi = 6
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, scope_abstract_unix_socket(&policy), "scope_abstract_unix_socket")
 
@@ -1261,7 +1261,7 @@ test_logging_options_abi6_vs_abi7 :: proc(t: ^testing.T) {
 	fake_state.abi = 6
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 	expect_policy_ok(
@@ -1295,7 +1295,7 @@ test_thread_sync_abi7_vs_abi8 :: proc(t: ^testing.T) {
 	fake_state.abi = 7
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/tmp"), "allow_ro_dirs")
 	expect_policy_ok(t, handle_flags(&policy, {.Tsync}), "handle_flags")
@@ -1330,7 +1330,7 @@ test_resolve_unix_path_access_abi8_vs_abi9 :: proc(t: ^testing.T) {
 	fake_state.abi = 8
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_path(&policy, .Directory, "/tmp", Path_Access{.Read_Dir, .Resolve_Unix}), "allow_path resolve unix")
 
@@ -1359,7 +1359,7 @@ test_default_handles_all_dimensions_deny_by_default :: proc(t: ^testing.T) {
 	// Only a filesystem rule is added, but the default handled set is all three
 	// dimensions, so the ruleset denies network + scope by default too.
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/usr"), "allow_ro_dirs")
 
@@ -1380,7 +1380,7 @@ test_policy_handle_narrows_handled_set :: proc(t: ^testing.T) {
 
 	// Narrow deny-by-default to filesystem only: network + scope stay free.
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, handle_features(&policy, {.Filesystem}), "policy_handle")
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/usr"), "allow_ro_dirs")
@@ -1524,7 +1524,7 @@ test_empty_handled_set_is_invalid_policy :: proc(t: ^testing.T) {
 	fake_state.abi = 9
 
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(t, handle_features(&policy, {}), "policy_handle empty")
 	expect_policy_ok(t, allow_ro_dirs(&policy, "/usr"), "allow_ro_dirs")
@@ -1551,7 +1551,7 @@ test_reject_symlink_opens_with_nofollow :: proc(t: ^testing.T) {
 	// A .Reject path must be opened with O_NOFOLLOW so a post-validation symlink
 	// swap is not followed (FIND-002). A default (.Follow) path must not.
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	expect_policy_ok(
 		t,
@@ -1579,7 +1579,7 @@ test_path_with_interior_nul_rejected :: proc(t: ^testing.T) {
 	// An interior NUL would be truncated by the cstring conversion, silently
 	// sandboxing a different path than named — reject it instead (FIND-F1).
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	err := allow_path(&policy, .File, "/usr\x00.txt", path_access_ro_file)
 	testing.expect_value(t, err.kind, Policy_Error_Kind.Invalid_Policy)
@@ -1591,7 +1591,7 @@ test_path_with_interior_nul_rejected :: proc(t: ^testing.T) {
 test_oversized_path_rejected :: proc(t: ^testing.T) {
 	// A path at/over PATH_MAX is rejected up front, before any stat/clone (FIND-F2).
 	policy: Policy
-	expect_policy_ok(t, init(&policy), "policy_init")
+	expect_policy_ok(t, init(&policy), "init")
 	defer cleanup(&policy)
 	big := strings.repeat("a", posix.PATH_MAX, context.temp_allocator)
 	err := allow_path(&policy, .Directory, big, path_access_ro_dir)
