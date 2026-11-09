@@ -1,6 +1,4 @@
 package syscall
-import "core:io"
-import "core:os"
 /*
     Low-level interface to the Linux Landlock sandboxing feature.
 
@@ -134,55 +132,4 @@ path_beneath_attr :: proc "contextless" (
 
 net_port_attr :: proc "contextless" (access: Access_Net_Flags, port: u16) -> Net_Port_Attr {
 	return Net_Port_Attr{Allowed_Access = access, Port = u64(port)}
-}
-
-when ODIN_OS != .Linux {
-	unsupported_platform_error :: proc "contextless" () -> os.Error {
-		return os.Error(io.Error.Unsupported)
-	}
-
-	get_abi_version :: proc() -> (int, os.Error) {
-		return 0, unsupported_platform_error()
-	}
-
-	create_ruleset :: proc(attr: ^Ruleset_Attr, flags: u32 = 0) -> (int, os.Error) {
-		return -1, unsupported_platform_error()
-	}
-
-	add_path_beneath_rule :: proc(
-		ruleset_fd: int,
-		attr: ^Path_Beneath_Attr,
-		flags: int,
-	) -> os.Error {
-		return unsupported_platform_error()
-	}
-
-	add_net_port_rule :: proc(ruleset_fd: int, attr: ^Net_Port_Attr, flags: int) -> os.Error {
-		return unsupported_platform_error()
-	}
-
-	add_rule_to_ruleset :: proc(
-		ruleset_fd: int,
-		rule_type: Rule_Type,
-		rule_attr: rawptr,
-		flags: int,
-	) -> os.Error {
-		return unsupported_platform_error()
-	}
-
-	restrict_self :: proc(ruleset_fd: int, flags: int) -> os.Error {
-		return unsupported_platform_error()
-	}
-
-	prctl :: proc(option: int, arg2, arg3, arg4, arg5: uintptr) -> os.Error {
-		return unsupported_platform_error()
-	}
-
-	open_path :: proc(path: string, no_follow := false) -> (int, os.Error) {
-		return -1, unsupported_platform_error()
-	}
-
-	close_fd :: proc(fd: int) -> os.Error {
-		return unsupported_platform_error()
-	}
 }

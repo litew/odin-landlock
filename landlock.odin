@@ -450,7 +450,7 @@ write_feature_set :: proc(builder: ^strings.Builder, features: Feature_Set) {
 			strings.write_byte(builder, ',')
 		}
 		first = false
-		fmt.sbprint(builder, feature)
+		fmt.sbprint(builder, enum_to_string(feature))
 	}
 	strings.write_byte(builder, ']')
 }
@@ -505,10 +505,10 @@ debug_summary :: proc(
 	fmt.sbprint(&builder, .Tsync in result.flags_applied ? "\ntsync=on" : "\ntsync=off")
 	fmt.sbprintf(
 		&builder,
-		"\nerror_kind=%v\nerror_cause=%v\nvalidation=%v\nraw_errno=%d\n",
-		result.error.kind,
-		result.error.cause,
-		result.error.validation,
+		"\nerror_kind=%s\nerror_cause=%s\nvalidation=%s\nraw_errno=%d\n",
+		enum_to_string(result.error.kind),
+		enum_to_string(result.error.cause),
+		enum_to_string(result.error.validation),
 		result.error.raw_errno,
 	)
 
