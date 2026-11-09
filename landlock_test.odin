@@ -119,18 +119,9 @@ test_unsupported_platform_is_typed :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_unsupported_feature_is_omitted :: proc(t: ^testing.T) {
-	result := policy_result_unsupported_feature(.Network)
-	testing.expect_value(t, result.status, Policy_Status.Partially_Enforced)
-	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Unsupported_Feature)
-	testing.expect(t, .Network in result.features_omitted, "unsupported feature should be recorded")
-}
-
-@(test)
 test_invalid_policy_reports_structured_error :: proc(t: ^testing.T) {
 	result := policy_result_invalid_policy()
 	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
-	testing.expect(t, result.error.kind != .Skipped_For_Test, "invalid policy must not be reported as a test skip")
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Invalid_Policy)
 	testing.expect_value(t, result.error.cause, Policy_Error_Cause.Validation)
 }
@@ -165,14 +156,6 @@ test_generic_syscall_failure_preserves_errno :: proc(t: ^testing.T) {
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Syscall_Failed)
 	testing.expect_value(t, result.error.cause, Policy_Error_Cause.Create_Ruleset)
 	testing.expect_value(t, result.error.raw_errno, i32(7))
-}
-
-@(test)
-test_skipped_for_test_is_typed :: proc(t: ^testing.T) {
-	result := policy_result_skipped_for_test()
-	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
-	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Skipped_For_Test)
-	testing.expect(t, result.error.kind != .Invalid_Policy, "test skip must remain distinct from invalid policy")
 }
 
 @(test)

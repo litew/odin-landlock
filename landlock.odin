@@ -284,7 +284,6 @@ Policy_Error_Kind :: enum {
 	No_New_Privs_Failed,
 	Syscall_Failed,
 	Allocation_Failed,
-	Skipped_For_Test,
 }
 
 Policy_Error_Cause :: enum {
@@ -298,7 +297,6 @@ Policy_Error_Cause :: enum {
 	Unsupported_Feature,
 	Unsupported_Platform,
 	Allocation,
-	Test_Harness,
 }
 
 Policy_Validation_Failure :: enum {
@@ -545,15 +543,6 @@ policy_result_unsupported_platform :: proc "contextless" () -> Policy_Result {
 }
 
 @(private)
-policy_result_unsupported_feature :: proc "contextless" (feature: Feature) -> Policy_Result {
-	return policy_result_error(
-		.Partially_Enforced,
-		Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
-		features_omitted = Feature_Set{feature},
-	)
-}
-
-@(private)
 policy_result_invalid_policy :: proc "contextless" (
 	validation: Policy_Validation_Failure = .None,
 ) -> Policy_Result {
@@ -587,14 +576,6 @@ policy_result_syscall_failed :: proc "contextless" (
 	return policy_result_error(
 		.Not_Enforced,
 		policy_error_errno(.Syscall_Failed, cause, raw_errno),
-	)
-}
-
-@(private)
-policy_result_skipped_for_test :: proc "contextless" () -> Policy_Result {
-	return policy_result_error(
-		.Not_Enforced,
-		Policy_Error{kind = .Skipped_For_Test, cause = .Test_Harness},
 	)
 }
 
