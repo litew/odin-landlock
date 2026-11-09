@@ -3,7 +3,7 @@
 
     A policy is deny-by-default over a handled set (the go-landlock model): once
     applied, every access right the running kernel supports is denied unless an
-    allow_* rule grants it. policy_init defaults the handled set to all three
+    allow_* rule grants it. init defaults the handled set to all three
     access dimensions (Filesystem, Network, Scope), best-effort to the kernel's
     ABI; narrow it with handle_features (e.g. {.Filesystem} for FS-only).
     Dimensions left out of the handled set are not restricted. Logging and
@@ -18,13 +18,13 @@
     returns Enforced or Unsupported_Feature; Partially_Enforced is exclusive to apply_best_effort.
     apply never aborts the process: fail closed by checking is_enforced(result)
     (or the status) — ignoring it leaves the process unsandboxed.
-    Landlock enforcement is irreversible; policy_cleanup only frees builder memory.
+    Landlock enforcement is irreversible; cleanup only frees builder memory.
 
     Memory: the builder owns its rules/strings with the allocator passed to
-    policy_init and frees them in policy_cleanup. Transient buffers used during
+    init and frees them in cleanup. Transient buffers used during
     apply (path handles, cstrings, stat info) are freed immediately within the
     procs that create them, so the library leaves nothing for the caller to clean
-    up beyond policy_cleanup — no reliance on resetting context.temp_allocator.
+    up beyond cleanup — no reliance on resetting context.temp_allocator.
     The summary procs return caller-owned strings; free them with the allocator
     passed to the summary proc.
 
