@@ -1575,6 +1575,68 @@ test_reject_symlink_opens_with_nofollow :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_no_follow_survives_follow_then_reject_merge :: proc(t: ^testing.T) {
+	saved_ops := use_fake_apply_ops()
+	defer apply_ops = saved_ops
+	fake_state.abi = 9
+
+	// Merging a .Reject re-add into an existing .Follow rule must upgrade the
+	// recorded no_follow and must not duplicate the rule.
+	policy: Policy
+	expect_policy_ok(t, init(&policy), "init")
+	defer cleanup(&policy)
+	expect_policy_ok(t, allow_path(&policy, .Directory, "/usr", path_access_ro_dir), "allow follow first")
+	expect_policy_ok(
+		t,
+		allow_path(&policy, .Directory, "/usr", path_access_ro_dir, Path_Options{symlink = .Reject}),
+		"allow reject second",
+	)
+	testing.expect_value(t, len(policy.rules_path), 1)
+
+	result := apply_strict(&policy)
+	testing.expect_value(t, result.status, Policy_Status.Enforced)
+	testing.expect_value(t, count_fake_calls(.Open_Path), 1)
+	open_no_follow := false
+	for i in 0 ..< fake_state.call_count {
+		c := fake_state.calls[i]
+		if c.kind != .Open_Path do continue
+		open_no_follow = c.no_follow
+	}
+	testing.expect(t, open_no_follow, "merged rule must keep the stricter .Reject open")
+}
+
+@(test)
+test_no_follow_survives_reject_then_follow_merge :: proc(t: ^testing.T) {
+	saved_ops := use_fake_apply_ops()
+	defer apply_ops = saved_ops
+	fake_state.abi = 9
+
+	// The reverse merge must not weaken an existing .Reject: no_follow is
+	// monotonic, a later .Follow re-add cannot relax the open.
+	policy: Policy
+	expect_policy_ok(t, init(&policy), "init")
+	defer cleanup(&policy)
+	expect_policy_ok(
+		t,
+		allow_path(&policy, .Directory, "/usr", path_access_ro_dir, Path_Options{symlink = .Reject}),
+		"allow reject first",
+	)
+	expect_policy_ok(t, allow_path(&policy, .Directory, "/usr", path_access_ro_dir), "allow follow second")
+	testing.expect_value(t, len(policy.rules_path), 1)
+
+	result := apply_strict(&policy)
+	testing.expect_value(t, result.status, Policy_Status.Enforced)
+	testing.expect_value(t, count_fake_calls(.Open_Path), 1)
+	open_no_follow := false
+	for i in 0 ..< fake_state.call_count {
+		c := fake_state.calls[i]
+		if c.kind != .Open_Path do continue
+		open_no_follow = c.no_follow
+	}
+	testing.expect(t, open_no_follow, "merged rule must keep the stricter .Reject open")
+}
+
+@(test)
 test_path_with_interior_nul_rejected :: proc(t: ^testing.T) {
 	// An interior NUL would be truncated by the cstring conversion, silently
 	// sandboxing a different path than named — reject it instead (FIND-F1).
