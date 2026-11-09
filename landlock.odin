@@ -974,18 +974,6 @@ scope_abstract_unix_socket :: proc(policy: ^Policy) -> Policy_Error {
 }
 
 @(private)
-is_empty :: proc "contextless" (policy: ^Policy) -> bool {
-	return(
-		policy.features_requested == {} &&
-		len(policy.rules_path) == 0 &&
-		len(policy.rules_path_omitted) == 0 &&
-		len(policy.rules_network) == 0 &&
-		policy.rules_scoped == {} &&
-		policy.flags_restricted == {} \
-	)
-}
-
-@(private)
 Apply_Path_Fd :: struct {
 	rule_index: int,
 	fd:         int,
@@ -1239,7 +1227,7 @@ close_ruleset_fd :: proc(ruleset_fd: int) {
 
 @(private)
 apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
-	if !is_ready(policy) || is_empty(policy) {
+	if !is_ready(policy) {
 		return policy_result_invalid_policy(.Empty_Policy)
 	}
 	// An empty handled set would deny-by-default nothing: the kernel rejects an
@@ -1322,7 +1310,11 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			flags_omitted = flags_omitted,
 		)
 	}
-	if features_applied == {} && flags_applied == {} {
+	// A policy with no rules is still enforceable: the handled set alone denies
+	// everything it covers. Only fail when the caller requested something (rules
+	// or flags) and none of it can be enforced on this kernel/ABI.
+	if (policy.features_requested != {} || flags_requested != {}) &&
+	   features_applied == {} && flags_applied == {} {
 		return policy_result_error(
 			.Not_Enforced,
 			Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},

@@ -763,13 +763,25 @@ test_apply_validate_invalid_policies :: proc(t: ^testing.T) {
 	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Invalid_Policy)
 	testing.expect_value(t, result.error.validation, Policy_Validation_Failure.Empty_Policy)
 
+}
+
+@(test)
+test_deny_all_policy_without_rules_is_enforced :: proc(t: ^testing.T) {
+	saved_ops := use_fake_apply_ops()
+	defer apply_ops = saved_ops
+	fake_state.abi = 9
+
+	policy: Policy
 	expect_policy_ok(t, init(&policy), "policy_init")
 	defer cleanup(&policy)
 
-	result = apply_best_effort(&policy)
-	testing.expect_value(t, result.status, Policy_Status.Not_Enforced)
-	testing.expect_value(t, result.error.kind, Policy_Error_Kind.Invalid_Policy)
-	testing.expect_value(t, result.error.validation, Policy_Validation_Failure.Empty_Policy)
+	// No allow rules: everything in the handled set is denied by default.
+	result := apply_strict(&policy)
+	testing.expect_value(t, result.status, Policy_Status.Enforced)
+	testing.expect_value(t, result.error.kind, Policy_Error_Kind.None)
+	testing.expect_value(t, result.features_handled, Feature_Set{.Filesystem, .Network, .Scope})
+	testing.expect_value(t, result.features_requested, Feature_Set{})
+	testing.expect_value(t, count_fake_calls(.Restrict), 1)
 }
 
 @(test)
