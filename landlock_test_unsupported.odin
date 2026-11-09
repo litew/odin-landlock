@@ -2,11 +2,11 @@
 #+private
 package landlock
 
-// The Unsupported_Platform reporting path only compiles on non-Linux targets
-// (apply's `when ODIN_OS != .Linux` branch), so this test lives behind a build
-// tag instead of a when gate inside the Linux-only test file. It never runs in
-// the Linux CI job; it type-checks in the darwin/freebsd cross-target checks
-// and runs when the suite is tested on a non-Linux host.
+// The Unsupported_Platform reporting path only fires on non-Linux targets
+// (the syscall stubs report ABI 0 without an errno), so this test lives behind
+// a build tag instead of inside the Linux-only test file. It never runs in the
+// Linux CI job; it type-checks in the darwin/freebsd cross-target checks and
+// runs when the suite is tested on a non-Linux host.
 
 import "core:testing"
 

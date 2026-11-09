@@ -1266,18 +1266,6 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 		)
 	}
 
-	when ODIN_OS != .Linux {
-		return policy_result_with_context(
-			policy_result_unsupported_platform(),
-			0,
-			0,
-			{},
-			policy.features_requested,
-			{},
-			policy.features_requested,
-		)
-	}
-
 	ops := active_apply_ops()
 	abi, raw_errno := ops.probe_abi()
 	if raw_errno != 0 {
@@ -1292,11 +1280,14 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 		)
 	}
 
-	info, abi_err := abi_info_for_version(abi)
-	if abi_err != .None {
+	// A Linux kernel always reports ABI >= 1; ABI <= 0 without an errno means
+	// the syscall stubs are compiled in (non-Linux target), which provides no
+	// Landlock at all. Report Unsupported_Platform with everything requested
+	// marked omitted, before any kernel call.
+	if abi <= 0 {
 		return policy_result_with_context(
-			policy_result_disabled(0),
-			abi,
+			policy_result_unsupported_platform(),
+			0,
 			0,
 			{},
 			policy.features_requested,
@@ -1304,6 +1295,10 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			policy.features_requested,
 		)
 	}
+
+	// abi >= 1 here, so the version table always resolves; it clamps future ABIs
+	// down to the highest known one.
+	info, _ := abi_info_for_version(abi)
 	features_handled := handled_features_for_abi(info, policy.features_handled)
 	features_applied, features_omitted := requested_feature_support(policy, info)
 	// Restrict_self flags are best-effort by nature: unsupported bits are masked
