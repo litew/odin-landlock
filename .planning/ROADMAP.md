@@ -29,7 +29,8 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The full test suite passes on dev-2026-11, including fixes for the `core:fmt` pad-width change wherever tests/tools rely on it.
   3. Existing suite and `#assert` tripwire chain pass on dev-2026-11, evidencing no representation churn in transmute-bridged masks. (Literal bit-value truth tests deferred to Phase 2 by decision D-07 in `phases/01-toolchain-baseline/01-CONTEXT.md`, 2026-11-09.)
   4. README documents the dev-2026-11 pin.
-**Plans**: TBD
+**Plans**: 1/1 plans executed
+- [x] 01-PLAN.md
 
 ### Phase 2: ABI Contract & Gating (v10–v11)
 **Goal**: The hand-rolled syscall layer exposes the complete v10/v11 ABI surface (UDP net bits, `Add_Rule_Flag.Quiet`, `No_New_Privs`, 48-byte `Ruleset_Attr` with quiet fields, explicit create size) and the cumulative gating chain extends v9→v11 in kernel compat order, so every later feature is requestable and gated to the right kernels.
@@ -76,7 +77,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Toolchain Baseline | 0/TBD | Not started | - |
+| 1. Toolchain Baseline | 1/1 | In Progress | - |
 | 2. ABI Contract & Gating (v10–v11) | 0/TBD | Not started | - |
 | 3. Feature Surface — UDP, Quiet, NNP | 0/TBD | Not started | - |
 | 4. Validation Stack & Kernel-Matrix CI | 0/TBD | Not started | - |

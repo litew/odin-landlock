@@ -27,7 +27,7 @@ Requirements for this milestone. Each maps to roadmap phases.
 
 ### Toolchain
 
-- [ ] **TOOL-01**: Project builds and the full suite passes on Odin `dev-2026-11` nightly; README pin updated
+- [x] **TOOL-01**: Project builds and the full suite passes on Odin `dev-2026-11` nightly; README pin updated
 
 ### Validation
 
@@ -76,7 +76,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AUD-02 | Phase 3 | Pending |
 | NNP-01 | Phase 3 | Pending |
 | GATE-01 | Phase 2 | Pending |
-| TOOL-01 | Phase 1 | Pending |
+| TOOL-01 | Phase 1 | Complete |
 | VAL-01 | Phase 4 | Pending |
 | VAL-02 | Phase 4 | Pending |
 | VAL-03 | Phase 4 | Pending |

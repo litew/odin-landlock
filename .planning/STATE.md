@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 1
+current_phase: 01
 current_phase_name: Toolchain Baseline
-status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-11-10T02:56:33.013Z"
+status: verifying
+stopped_at: Completed 01-01-PLAN.md (ready_for_verification)
+last_updated: "2026-11-10T03:14:34.987Z"
 last_activity: 2026-11-09
-last_activity_desc: Roadmap created; 10/10 v1 requirements mapped to phases
-state_head: e785a5f963916ce28d75ddff53eafda0df4936de
+last_activity_desc: Phase 01 execution started
+state_head: "0b75e87fc1b707b2050152b63266a6d508ac8450"
 progress:
   total_phases: 4
   completed_phases: 0
   total_plans: 1
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-11-09)
 
 **Core value:** Odin code can restrict itself with kernel-enforced Landlock policies that adapt to the running kernel's ABI and never overstate what is actually enforced (fail-closed by contract).
-**Current focus:** Phase 1 — Toolchain Baseline
+**Current focus:** Phase 01 — Toolchain Baseline
 
 ## Current Position
 
-Phase: 1 (Toolchain Baseline) — READY TO EXECUTE
-Plan: 0 of TBD in current phase
-Status: Ready to execute
-Last activity: 2026-11-09 — Roadmap created; 10/10 v1 requirements mapped to phases
+Phase: 01 (Toolchain Baseline) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-11-09 — Phase 01 execution started
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -48,6 +48,11 @@ Progress: [░░░░░░░░░░] 0%
 | - | - | - | - |
 
 *Updated after each plan completion*
+**Per-Plan Metrics:**
+
+| Plan | Duration | Tasks | Files |
+|------|----------|-------|-------|
+| Phase 01 P01 | 10 min | 3 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -60,6 +65,8 @@ Recent decisions affecting current work:
 - Odin nightly bump (dev-2026-11) lands first and alone, whole suite green before any feature work (PROJECT.md constraint)
 - Kernel floor stays ≥ 5.13; all new features degrade best-effort below their introduction kernel
 - Full validation stack per feature: fake-seam unit + fork-based real-kernel + conformance probe in kernel-matrix CI
+- [Phase 01]: Pinned toolchain identity: dev-2026-11a release tag ships a binary that prints dev-2026-11-nightly:9a69916 (artifact byte-identical to dev-2026-11); identity is proven by sha256 65c9f6e9... in the container build, and README records the printed string verbatim
+- [Phase 01]: Local verification doctrine: phase executors run gate commands inside localhost/odin-dev-2026-11a podman image (repo bind-mounted :Z), never the host compiler
 
 ### Pending Todos
 
@@ -82,6 +89,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-11-10T01:42:27.181Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-toolchain-baseline/01-CONTEXT.md
+Last session: 2026-11-10T03:14:34.975Z
+Stopped at: Completed 01-01-PLAN.md (ready_for_verification)
+Resume file: None
