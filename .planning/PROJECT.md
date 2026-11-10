@@ -23,13 +23,13 @@ Odin code can restrict itself with kernel-enforced Landlock policies that adapt 
 - ✓ `Apply_Ops` test seam + unit suite (fake kernel calls, errno paths, allocator-failure paths) — existing
 - ✓ Fork-based real-kernel integration test (`-define:LANDLOCK_INTEGRATION=true`) — existing
 - ✓ CI: cross-compile checks + weekly ABI conformance probe in per-kernel VMs (virtme-ng) — existing
+- ✓ Toolchain pinned to Odin `dev-2026-11a` nightly; whole suite + D-08 gate verified on it — Phase 1
 
 ### Active
 
 <!-- Current scope: milestone "ABI-head parity to v11" (v12/errata deferred to v2). Hypotheses until shipped. -->
 
 - [ ] Kernel floor stays ≥ 5.13: every new feature degrades best-effort on older kernels (requested vs `abi_used`, omission reporting)
-- [ ] Toolchain moved to Odin `dev-2026-11` nightly; whole suite re-verified before feature work lands
 - [ ] v10 UDP network rights covered (bind / connect-send via `LANDLOCK_RULE_NET_PORT` reuse)
 - [ ] v10 audit-quieting surface covered (per-rule `ADD_RULE_QUIET` incl. quiet-only rules; ruleset `quiet_*` masks subset-validated)
 - [ ] v11 `LANDLOCK_RESTRICT_SELF_NO_NEW_PRIVS` covered as an opt-in prctl-elision knob, gated to ABI ≥ v11
@@ -68,7 +68,7 @@ Odin code can restrict itself with kernel-enforced Landlock policies that adapt 
 | Milestone = parity to ABI v11 (v10 UDP + quiet, v11 NNP elision); v12 permission model + errata deferred to v2 | User directive: implement new kernel features; research proved v12 is master-only (≈7.4, unreleased, untestable) so v11 is the deliverable scope | — Pending |
 | Keep ≥ 5.13 kernel floor | Broad compatibility; matches existing ABI-gating design | — Pending |
 | Full validation stack per feature (unit + integration + conformance probe) | Match repo's existing quality pattern; enforcement is only provable on real kernels | — Pending |
-| Bump Odin nightly up front, re-verify before features | New core:sys/linux surface may be required by new ABIs; isolate toolchain churn from feature churn | — Pending |
+| Bump Odin nightly up front, re-verify before features | New core:sys/linux surface may be required by new ABIs; isolate toolchain churn from feature churn | ✓ Done — Phase 1 (pinned `dev-2026-11a`, gate green, D-04 no-op proven) |
 
 ## Evolution
 
@@ -88,4 +88,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-09 after ABI-head scoping (milestone = v11 parity; v12/errata deferred to v2)*
+*Last updated: 2026-11-10 after Phase 1 (toolchain baseline: dev-2026-11a pinned, gate verified)*

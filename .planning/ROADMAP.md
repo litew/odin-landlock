@@ -12,7 +12,7 @@ This milestone takes the library from complete Landlock ABI v1–v9 coverage to 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Toolchain Baseline** - Build and pass the full suite on Odin dev-2026-11 before any feature work lands
+- [x] **Phase 1: Toolchain Baseline** - Build and pass the full suite on Odin dev-2026-11 before any feature work lands (completed 2026-11-09)
 - [ ] **Phase 2: ABI Contract & Gating (v10–v11)** - Raw syscall surface, versioned attr sizing, and cumulative gating chain extended through v11
 - [ ] **Phase 3: Feature Surface — UDP, Quiet, NNP** - Builder-API coverage of v10 UDP rights, audit quieting, and v11 NNP elision
 - [ ] **Phase 4: Validation Stack & Kernel-Matrix CI** - Per-feature unit, real-kernel integration, and conformance-probe coverage through v11
@@ -29,7 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. The full test suite passes on dev-2026-11, including fixes for the `core:fmt` pad-width change wherever tests/tools rely on it.
   3. Existing suite and `#assert` tripwire chain pass on dev-2026-11, evidencing no representation churn in transmute-bridged masks. (Literal bit-value truth tests deferred to Phase 2 by decision D-07 in `phases/01-toolchain-baseline/01-CONTEXT.md`, 2026-11-09.)
   4. README documents the dev-2026-11 pin.
-**Plans**: 1/1 plans executed
+**Plans**: 1/1 plans complete
 - [x] 01-PLAN.md
 
 ### Phase 2: ABI Contract & Gating (v10–v11)
@@ -77,7 +77,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Toolchain Baseline | 1/1 | In Progress | - |
+| 1. Toolchain Baseline | 1/1 | Complete    | 2026-11-09 |
 | 2. ABI Contract & Gating (v10–v11) | 0/TBD | Not started | - |
 | 3. Feature Surface — UDP, Quiet, NNP | 0/TBD | Not started | - |
 | 4. Validation Stack & Kernel-Matrix CI | 0/TBD | Not started | - |
