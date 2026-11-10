@@ -19,11 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Odin (latest monthly release)
+      - name: Install Odin (pinned nightly)
         uses: laytan/setup-odin@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          release: latest
+          release: dev-2026-11a
 
       - run: odin version
       - run: odin report   # toolchain/LLVM info for debugging CI failures
