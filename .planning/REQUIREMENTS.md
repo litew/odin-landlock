@@ -70,22 +70,22 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| NET-01 | — | Pending |
-| NET-02 | — | Pending |
-| AUD-01 | — | Pending |
-| AUD-02 | — | Pending |
-| NNP-01 | — | Pending |
-| GATE-01 | — | Pending |
-| TOOL-01 | — | Pending |
-| VAL-01 | — | Pending |
-| VAL-02 | — | Pending |
-| VAL-03 | — | Pending |
+| NET-01 | Phase 3 | Pending |
+| NET-02 | Phase 3 | Pending |
+| AUD-01 | Phase 3 | Pending |
+| AUD-02 | Phase 3 | Pending |
+| NNP-01 | Phase 3 | Pending |
+| GATE-01 | Phase 2 | Pending |
+| TOOL-01 | Phase 1 | Pending |
+| VAL-01 | Phase 4 | Pending |
+| VAL-02 | Phase 4 | Pending |
+| VAL-03 | Phase 4 | Pending |
 
 **Coverage:**
 - v1 requirements: 10 total
-- Mapped to phases: 0
-- Unmapped: 10 ⚠️ (pending roadmap creation)
+- Mapped to phases: 10
+- Unmapped: 0 ✓ (100% coverage)
 
 ---
 *Requirements defined: 2026-11-09*
-*Last updated: 2026-11-09 after initial definition*
+*Last updated: 2026-11-09 after roadmap creation*
