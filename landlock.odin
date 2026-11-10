@@ -3,7 +3,7 @@
 
     A policy is deny-by-default over a handled set (the go-landlock model): once
     applied, every access right the running kernel supports is denied unless an
-    allow_* rule grants it. policy_init defaults the handled set to all three
+    allow_* rule grants it. init defaults the handled set to all three
     access dimensions (Filesystem, Network, Scope), best-effort to the kernel's
     ABI; narrow it with handle_features (e.g. {.Filesystem} for FS-only).
     Dimensions left out of the handled set are not restricted. Logging and
@@ -18,13 +18,13 @@
     returns Enforced or Unsupported_Feature; Partially_Enforced is exclusive to apply_best_effort.
     apply never aborts the process: fail closed by checking is_enforced(result)
     (or the status) — ignoring it leaves the process unsandboxed.
-    Landlock enforcement is irreversible; policy_cleanup only frees builder memory.
+    Landlock enforcement is irreversible; cleanup only frees builder memory.
 
     Memory: the builder owns its rules/strings with the allocator passed to
-    policy_init and frees them in policy_cleanup. Transient buffers used during
+    init and frees them in cleanup. Transient buffers used during
     apply (path handles, cstrings, stat info) are freed immediately within the
     procs that create them, so the library leaves nothing for the caller to clean
-    up beyond policy_cleanup — no reliance on resetting context.temp_allocator.
+    up beyond cleanup — no reliance on resetting context.temp_allocator.
     The summary procs return caller-owned strings; free them with the allocator
     passed to the summary proc.
 
@@ -284,7 +284,6 @@ Policy_Error_Kind :: enum {
 	No_New_Privs_Failed,
 	Syscall_Failed,
 	Allocation_Failed,
-	Skipped_For_Test,
 }
 
 Policy_Error_Cause :: enum {
@@ -298,7 +297,6 @@ Policy_Error_Cause :: enum {
 	Unsupported_Feature,
 	Unsupported_Platform,
 	Allocation,
-	Test_Harness,
 }
 
 Policy_Validation_Failure :: enum {
@@ -450,7 +448,7 @@ write_feature_set :: proc(builder: ^strings.Builder, features: Feature_Set) {
 			strings.write_byte(builder, ',')
 		}
 		first = false
-		fmt.sbprint(builder, feature)
+		fmt.sbprint(builder, enum_to_string(feature))
 	}
 	strings.write_byte(builder, ']')
 }
@@ -473,7 +471,22 @@ debug_summary :: proc(
 	summary: string,
 	err: Policy_Error,
 ) {
-	builder, alloc_err := strings.builder_make_len_cap(0, DEBUG_SUMMARY_CAP, allocator)
+	return debug_summary_with_cap(result, DEBUG_SUMMARY_CAP, allocator)
+}
+
+// debug_summary_with_cap renders the same report as debug_summary under an
+// explicit capacity, so tests can drive the over-cap failure path (the real
+// bound sits far above any renderable line).
+@(private)
+debug_summary_with_cap :: proc(
+	result: Policy_Result,
+	cap: int,
+	allocator := context.allocator,
+) -> (
+	summary: string,
+	err: Policy_Error,
+) {
+	builder, alloc_err := strings.builder_make_len_cap(0, cap, allocator)
 	if alloc_err != nil {
 		return "", policy_error_allocation(alloc_err)
 	}
@@ -505,10 +518,10 @@ debug_summary :: proc(
 	fmt.sbprint(&builder, .Tsync in result.flags_applied ? "\ntsync=on" : "\ntsync=off")
 	fmt.sbprintf(
 		&builder,
-		"\nerror_kind=%v\nerror_cause=%v\nvalidation=%v\nraw_errno=%d\n",
-		result.error.kind,
-		result.error.cause,
-		result.error.validation,
+		"\nerror_kind=%s\nerror_cause=%s\nvalidation=%s\nraw_errno=%d\n",
+		enum_to_string(result.error.kind),
+		enum_to_string(result.error.cause),
+		enum_to_string(result.error.validation),
 		result.error.raw_errno,
 	)
 
@@ -516,7 +529,7 @@ debug_summary :: proc(
 	// builder either grew (our bound was wrong) or sbprintf hit an allocation
 	// failure and truncated — either way, fail rather than return a partial line.
 	summary = strings.to_string(builder)
-	if len(summary) >= DEBUG_SUMMARY_CAP {
+	if len(summary) >= cap {
 		strings.builder_destroy(&builder)
 		return "", policy_error_allocation(.Out_Of_Memory)
 	}
@@ -541,15 +554,6 @@ policy_result_unsupported_platform :: proc "contextless" () -> Policy_Result {
 	return policy_result_error(
 		.Not_Enforced,
 		Policy_Error{kind = .Unsupported_Platform, cause = .Unsupported_Platform},
-	)
-}
-
-@(private)
-policy_result_unsupported_feature :: proc "contextless" (feature: Feature) -> Policy_Result {
-	return policy_result_error(
-		.Partially_Enforced,
-		Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},
-		features_omitted = Feature_Set{feature},
 	)
 }
 
@@ -587,14 +591,6 @@ policy_result_syscall_failed :: proc "contextless" (
 	return policy_result_error(
 		.Not_Enforced,
 		policy_error_errno(.Syscall_Failed, cause, raw_errno),
-	)
-}
-
-@(private)
-policy_result_skipped_for_test :: proc "contextless" () -> Policy_Result {
-	return policy_result_error(
-		.Not_Enforced,
-		Policy_Error{kind = .Skipped_For_Test, cause = .Test_Harness},
 	)
 }
 
@@ -687,7 +683,7 @@ path_validation_stat :: proc(
 			if link_err == .Not_Exist {
 				return false, policy_error_invalid_policy(.Missing_Path)
 			}
-			return false, policy_error_invalid_policy(.Wrong_Path_Type)
+			return false, policy_error_errno(.Syscall_Failed, .Validation, raw_errno_from_os_error(link_err))
 		}
 		defer os.file_info_delete(link_info, context.allocator)
 		if link_info.type == .Symlink {
@@ -707,7 +703,7 @@ path_validation_stat :: proc(
 		if stat_err == .Not_Exist {
 			return false, policy_error_invalid_policy(.Missing_Path)
 		}
-		return false, policy_error_invalid_policy(.Wrong_Path_Type)
+		return false, policy_error_errno(.Syscall_Failed, .Validation, raw_errno_from_os_error(stat_err))
 	}
 	defer os.file_info_delete(info, context.allocator)
 	if !path_kind_matches_file_type(kind, info.type) {
@@ -993,18 +989,6 @@ scope_abstract_unix_socket :: proc(policy: ^Policy) -> Policy_Error {
 }
 
 @(private)
-is_empty :: proc "contextless" (policy: ^Policy) -> bool {
-	return(
-		policy.features_requested == {} &&
-		len(policy.rules_path) == 0 &&
-		len(policy.rules_path_omitted) == 0 &&
-		len(policy.rules_network) == 0 &&
-		policy.rules_scoped == {} &&
-		policy.flags_restricted == {} \
-	)
-}
-
-@(private)
 Apply_Path_Fd :: struct {
 	rule_index: int,
 	fd:         int,
@@ -1258,7 +1242,7 @@ close_ruleset_fd :: proc(ruleset_fd: int) {
 
 @(private)
 apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
-	if !is_ready(policy) || is_empty(policy) {
+	if !is_ready(policy) {
 		return policy_result_invalid_policy(.Empty_Policy)
 	}
 	// An empty handled set would deny-by-default nothing: the kernel rejects an
@@ -1282,18 +1266,6 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 		)
 	}
 
-	when ODIN_OS != .Linux {
-		return policy_result_with_context(
-			policy_result_unsupported_platform(),
-			0,
-			0,
-			{},
-			policy.features_requested,
-			{},
-			policy.features_requested,
-		)
-	}
-
 	ops := active_apply_ops()
 	abi, raw_errno := ops.probe_abi()
 	if raw_errno != 0 {
@@ -1308,11 +1280,14 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 		)
 	}
 
-	info, abi_err := abi_info_for_version(abi)
-	if abi_err != .None {
+	// A Linux kernel always reports ABI >= 1; ABI <= 0 without an errno means
+	// the syscall stubs are compiled in (non-Linux target), which provides no
+	// Landlock at all. Report Unsupported_Platform with everything requested
+	// marked omitted, before any kernel call.
+	if abi <= 0 {
 		return policy_result_with_context(
-			policy_result_disabled(0),
-			abi,
+			policy_result_unsupported_platform(),
+			0,
 			0,
 			{},
 			policy.features_requested,
@@ -1320,6 +1295,10 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			policy.features_requested,
 		)
 	}
+
+	// abi >= 1 here, so the version table always resolves; it clamps future ABIs
+	// down to the highest known one.
+	info, _ := abi_info_for_version(abi)
 	features_handled := handled_features_for_abi(info, policy.features_handled)
 	features_applied, features_omitted := requested_feature_support(policy, info)
 	// Restrict_self flags are best-effort by nature: unsupported bits are masked
@@ -1341,7 +1320,11 @@ apply_with_mode :: proc(policy: ^Policy, best_effort: bool) -> Policy_Result {
 			flags_omitted = flags_omitted,
 		)
 	}
-	if features_applied == {} && flags_applied == {} {
+	// A policy with no rules is still enforceable: the handled set alone denies
+	// everything it covers. Only fail when the caller requested something (rules
+	// or flags) and none of it can be enforced on this kernel/ABI.
+	if (policy.features_requested != {} || flags_requested != {}) &&
+	   features_applied == {} && flags_applied == {} {
 		return policy_result_error(
 			.Not_Enforced,
 			Policy_Error{kind = .Unsupported_Feature, cause = .Unsupported_Feature},

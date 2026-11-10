@@ -16,8 +16,15 @@ Use these files in your project:
 
 See `examples/main.odin` for a complete, runnable example.
 
-Tested with Odin `dev-2026-05` nightly. The package depends on `core:sys/linux`
-(including a hand-rolled `openat2` wrapper), so pin an Odin version when vendoring.
+Tested with Odin `dev-2026-11a` nightly (hotfix of dev-2026-11, 2026-11-03).
+The package depends on `core:sys/linux` (including a hand-rolled `openat2`
+wrapper), so pin an Odin version when vendoring.
+
+Pinned toolchain identity:
+* tag: `dev-2026-11a`
+* `odin version`: dev-2026-11-nightly:9a69916
+* linux-amd64 artifact: `odin-linux-amd64-dev-2026-11a.tar.gz`,
+  sha256 `65c9f6e97d6f8a30930e151f270ce5aeaa98fe8b2ba49fe067394e2af04f7618`
 
 == Example
 Check `main.odin` file for more complete examples.
@@ -144,6 +151,10 @@ scoped IPC are all denied by default, and only explicit `allow_*` / `scope_*`
 rules open exceptions. So a policy that only grants filesystem rules still denies
 all networking and IPC scope.
 
+A policy with no `allow_*` rules is valid: applying it denies everything in the
+handled set (total lockdown). `init` + `apply_strict` needs no exceptions to be a
+complete policy.
+
 Logging and thread-sync are *not* part of the handled set — they are opt-in
 `restrict_self` flags requested separately via `handle_flags` (see above), so they
 are never applied unless you request them.
@@ -198,7 +209,7 @@ The reason for a `Not_Enforced` result lives in `Policy_Result.error.kind` (`Pol
 | `Disabled` | the kernel reported Landlock support is disabled (check that `cat /sys/kernel/security/lsm` contains the 'landlock' string).
 | `Unavailable` | the Landlock syscall path or permission setup failed, or the kernel returned a failure such as missing syscall support.
 | `Unsupported_Platform` | the current target does not provide Linux Landlock syscalls.
-| `Permission_Denied` / `No_New_Privs_Failed` / `Syscall_Failed` / `Allocation_Failed` | a specific apply-time failure; `error.cause` and `error.raw_errno` carry the detail.
+| `Permission_Denied` / `No_New_Privs_Failed` / `Syscall_Failed` / `Allocation_Failed` | a specific validation or apply-time failure; `error.cause` and `error.raw_errno` carry the detail.
 |===
 
 == ABI limits and best effort
