@@ -26,19 +26,20 @@ Odin code can restrict itself with kernel-enforced Landlock policies that adapt 
 
 ### Active
 
-<!-- Current scope: milestone "ABI-head parity". Hypotheses until shipped. -->
+<!-- Current scope: milestone "ABI-head parity to v11" (v12/errata deferred to v2). Hypotheses until shipped. -->
 
-- [ ] Research produces a definitive list of Landlock features in the current kernel ABI head beyond the mapped v1–v9 surface (FS, network, scopes, restrict flags)
-- [ ] New filesystem access rights / path-rule extensions covered (builder API + typed errors + ABI gating)
-- [ ] New network operations/families beyond TCP bind/connect covered
-- [ ] New scope domains beyond signals/abstract Unix sockets covered
-- [ ] New `LANDLOCK_RESTRICT_SELF_*` / audit-consent bits covered
 - [ ] Kernel floor stays ≥ 5.13: every new feature degrades best-effort on older kernels (requested vs `abi_used`, omission reporting)
-- [ ] Toolchain moved to latest Odin nightly; whole suite re-verified before feature work lands
+- [ ] Toolchain moved to Odin `dev-2026-11` nightly; whole suite re-verified before feature work lands
+- [ ] v10 UDP network rights covered (bind / connect-send via `LANDLOCK_RULE_NET_PORT` reuse)
+- [ ] v10 audit-quieting surface covered (per-rule `ADD_RULE_QUIET` incl. quiet-only rules; ruleset `quiet_*` masks subset-validated)
+- [ ] v11 `LANDLOCK_RESTRICT_SELF_NO_NEW_PRIVS` covered as an opt-in prctl-elision knob, gated to ABI ≥ v11
+- [ ] Cumulative gating chain + `#assert` tripwires extended v9→v11 with truthful omission reporting
 - [ ] Each new feature: unit tests (fake `Apply_Ops`), real-kernel integration test, conformance-probe checks in kernel-matrix CI
 
 ### Out of Scope
 
+- v12 permission model (namespace/capability rules, `handled_permissions`) — deferred to v2: ABI exists only on master (≈7.4, unreleased) and cannot be conformance-proven until a 7.4 kernel ships; the `.Permission`-joins-`HANDLED_DEFAULT` deny-by-default decision belongs with the dimension
+- Errata probe surface (`CREATE_RULESET_ERRATA`) — deferred to v2: probe/CI-only reporting per kernel docs; errata *gating* in the builder API stays excluded permanently (docs warn it can reduce protection)
 - Raising the kernel floor — user decision: keep ≥ 5.13 broad compatibility; old-kernel behavior is best-effort, not unsupported
 - Non-Linux enforcement — existing design: compile via stubs, `Unsupported_Platform` result
 - CLI sandbox wrapper / userland tooling — library-only milestone
@@ -64,7 +65,7 @@ Odin code can restrict itself with kernel-enforced Landlock policies that adapt 
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Milestone = ABI-head parity across all dimensions (FS, network, scopes, restrict flags) | User directive: deep-research new kernel features, implement support for all of them | — Pending |
+| Milestone = parity to ABI v11 (v10 UDP + quiet, v11 NNP elision); v12 permission model + errata deferred to v2 | User directive: implement new kernel features; research proved v12 is master-only (≈7.4, unreleased, untestable) so v11 is the deliverable scope | — Pending |
 | Keep ≥ 5.13 kernel floor | Broad compatibility; matches existing ABI-gating design | — Pending |
 | Full validation stack per feature (unit + integration + conformance probe) | Match repo's existing quality pattern; enforcement is only provable on real kernels | — Pending |
 | Bump Odin nightly up front, re-verify before features | New core:sys/linux surface may be required by new ABIs; isolate toolchain churn from feature churn | — Pending |
@@ -87,4 +88,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-11-09 after initialization*
+*Last updated: 2026-11-09 after ABI-head scoping (milestone = v11 parity; v12/errata deferred to v2)*
