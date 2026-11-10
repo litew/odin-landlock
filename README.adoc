@@ -16,8 +16,15 @@ Use these files in your project:
 
 See `examples/main.odin` for a complete, runnable example.
 
-Tested with Odin `dev-2026-05` nightly. The package depends on `core:sys/linux`
-(including a hand-rolled `openat2` wrapper), so pin an Odin version when vendoring.
+Tested with Odin `dev-2026-11a` nightly (hotfix of dev-2026-11, 2026-11-03).
+The package depends on `core:sys/linux` (including a hand-rolled `openat2`
+wrapper), so pin an Odin version when vendoring.
+
+Pinned toolchain identity:
+* tag: `dev-2026-11a`
+* `odin version`: dev-2026-11-nightly:9a69916
+* linux-amd64 artifact: `odin-linux-amd64-dev-2026-11a.tar.gz`,
+  sha256 `65c9f6e97d6f8a30930e151f270ce5aeaa98fe8b2ba49fe067394e2af04f7618`
 
 == Example
 Check `main.odin` file for more complete examples.
