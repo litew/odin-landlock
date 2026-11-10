@@ -27,7 +27,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Success Criteria** (what must be TRUE):
   1. Library, examples, and tools build clean with the pinned dev-2026-11 nightly (no regressions vs the dev-2026-05 baseline).
   2. The full test suite passes on dev-2026-11, including fixes for the `core:fmt` pad-width change wherever tests/tools rely on it.
-  3. Numeric bit-value truth tests (literal mask comparisons for existing ABI constants) pass, proving no representation churn in transmute-bridged masks.
+  3. Existing suite and `#assert` tripwire chain pass on dev-2026-11, evidencing no representation churn in transmute-bridged masks. (Literal bit-value truth tests deferred to Phase 2 by decision D-07 in `phases/01-toolchain-baseline/01-CONTEXT.md`, 2026-11-09.)
   4. README documents the dev-2026-11 pin.
 **Plans**: TBD
 
@@ -39,7 +39,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Success Criteria** (what must be TRUE):
   1. Probing a v10 kernel (host 7.2) reports the UDP bits in the v10 gating rows; the same requested access on a pre-v10 kernel has UDP stripped from its requested masks.
   2. Ruleset creation passes the ABI-appropriate attr size — 24 bytes below v10, 48 at v10+ — asserted in fake `Apply_Ops` tests.
-  3. Per-dimension `#assert` tripwires are in place: a new bit in any dimension (FS, net, scopes, restrict) that isn't threaded into its cumulative chain fails compilation.
+  3. Per-dimension `#assert` tripwires are in place: a new bit in any dimension (FS, net, scopes, restrict) that isn't threaded into its cumulative chain fails compilation. Literal bit-value truth tests (mask comparisons against kernel constants) cover existing v1–v9 constants, deferred here from Phase 1 (D-07).
   4. Requested-vs-used and omission reporting stays truthful: a feature unsupported on the running kernel surfaces as an omission, never as silently enforced.
   5. Stub twins exist for every new syscall-layer proc and cross-compile checks pass.
 **Plans**: TBD
